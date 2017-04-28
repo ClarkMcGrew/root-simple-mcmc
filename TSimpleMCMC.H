@@ -28,12 +28,9 @@ typedef std::vector<Parameter> Vector;
 class TProposeAdaptiveStep;
 
 /// A templated class to run an MCMC.  The resulting MCMC normally uses the
-/// Metropolis-Hastings algorithm with an adaptive proposal function.  This
-/// takes an optional pointer to a tree to save the accepted steps, the
-/// likelihood to evaluate the pdf for, and an optional class to propose
-/// steps.  The constructor will add branch to the tree for the log likelihood
-/// and the parameters at the accepted step.  The UserLikelihood template
-/// argument must be a class (or struct) which provides a method declared as:
+/// Metropolis-Hastings algorithm with an adaptive proposal function.  The
+/// UserLikelihood template argument must be a class (or struct) which
+/// provides a method declared as:
 ///
 ///\code
 /// struct ExampleLogLikelihood {
@@ -610,4 +607,26 @@ private:
     double fSigma;
 
 };
+
+// MIT License
+
+// Copyright (c) 2017 Clark McGrew
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 #endif

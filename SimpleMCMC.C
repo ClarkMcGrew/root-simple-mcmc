@@ -1,6 +1,7 @@
 #include "TSimpleMCMC.H"
 
-// A dummy log likelihood for testing.
+// A dummy log likelihood for testing.  This is an example, but don't
+// slavishly copy it (or you will be sorry!).
 class TDummyLogLikelihood {
 public:
     // Determine the number of dimensions.  This is where the dimensions are
@@ -117,6 +118,9 @@ void SimpleMCMC() {
 }
 
 #ifdef MAIN_PROGRAM
+// This let's the example compile directly.  To compile it, use the compile.sh
+// script and then run it using ./a.out which will produce a file name
+// "SimpleMCMC.root"
 int main(int argc, char **argv) {
     SimpleMCMC();
 }

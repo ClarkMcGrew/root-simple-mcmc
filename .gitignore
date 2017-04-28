@@ -27,3 +27,11 @@
 *.exe
 *.out
 *.app
+
+# ROOT associated temporary files and data files.
+*_C.d
+*_rdict.pcm
+*.root
+
+# Temporary files
+*~

@@ -6,7 +6,7 @@ class TDummyLogLikelihood {
 public:
     // Determine the number of dimensions.  This is where the dimensions are
     // defined, and everything else uses it.
-    std::size_t GetDim() const {return 50;}
+    std::size_t GetDim() const {return 10;}
 
     // Calculate the likelihood.  The dummy likelihood is a Gaussian (with
     // covariance) centered at zero.  The covariance is set in Init() (below).
@@ -96,20 +96,26 @@ void SimpleMCMC() {
     // setups a covariance to make the PDF more interesting.
     like.Init();
     
+    // Set the number of dimensions for the proposal.
+    mcmc.GetProposeStep().SetDim(like.GetDim());
+
+    // Set one of the dimensions to use a uniform proposal over a fixed range.
+    // mcmc.GetProposeStep().SetUniform(1,-0.5,0.5);
+
     // The number of dimensions in the point needs to agree with the number of
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
     Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
-    
+
     mcmc.Start(p,false);
-    
+
     // Burnin the chain (don't save the output)
     for (int i=0; i<10000; ++i) mcmc.Step(false);
 
     mcmc.GetProposeStep().ResetProposal();
-    
+
     // Run the chain (now with output to the tree).
     for (int i=0; i<1000000; ++i) mcmc.Step();
 

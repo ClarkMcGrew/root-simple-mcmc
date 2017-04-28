@@ -362,6 +362,7 @@ public:
     void SetUniform(int dim, double minimum, double maximum) {
         if (dim < 0 || (std::size_t) dim >= fProposalType.size()) {
             MCMC_ERROR << "Dimension " << dim << " is out of range."
+                       << " 0 to " << fProposalType.size()
                        << std::endl;
             return;
         }

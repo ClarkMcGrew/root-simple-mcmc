@@ -345,6 +345,8 @@ public:
         }
     }
 
+    const Vector& GetEstimatedCenter() const {return fCentralPoint;}
+    
     /// Set the number of dimensions in the proposal.  This must match the
     /// dimensionality of the likelihood being use.
     void SetDim(int dim) {

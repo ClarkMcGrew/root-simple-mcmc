@@ -75,11 +75,12 @@ struct FakeData {
     }
 
     void MakeBackgroundEvent(Event& row) {
-        row.TrueMass = gRandom->Uniform(SampleMinimum,SampleMaximum);
+        row.Mass = gRandom->Uniform(SampleMinimum,SampleMaximum);
         row.TrueMassSigma = TrueResolution*row.TrueMass;
         do {
-            row.Mass = gRandom->Gaus(row.TrueMass,row.TrueMassSigma);
-        } while (row.Mass < 0);
+            // Yes, this looks backwards.  No, it's not.
+            row.TrueMass = gRandom->Gaus(row.Mass,row.TrueMassSigma);
+        } while (row.TrueMass < 0);
         row.Type = -2; // Background (don't look at this for data!);
         row.Separation = std::abs(gRandom->Gaus(0.0,TrueBackgroundSeparation));
         if (gRandom->Uniform() < TrueMuDkFrac) row.MuDk = 1;

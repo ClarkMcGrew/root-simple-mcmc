@@ -30,7 +30,7 @@ struct SystematicCorrection {
     
     bool IsSignal(const Simulated::Event& evt) const {return (evt.Type == 0);}
     
-    bool IsBackground(const Simulated::Event& evt) const {return (evt.Type > 0);}
+    bool IsBackground(const Simulated::Event& evt) const {return (evt.Type>0);}
     
     double Separation(const Simulated::Event& evt,
                       const std::vector<double>& param) const {

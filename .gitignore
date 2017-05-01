@@ -32,6 +32,7 @@
 *_C.d
 *_rdict.pcm
 *.root
+*.png
 
 # Temporary files
 *~

@@ -295,20 +295,13 @@ struct TProposeSimpleStep {
 /// Gaussian, then this probably won't fail, but it can become less efficient.
 class TProposeAdaptiveStep {
 public:
-    TProposeAdaptiveStep() {
-        // The number of trial points that have been generated.
-        fTrials = 0;
-        // The number of successful steps that have happened.
-        fSuccesses = 0;
-        // Start at 100% acceptance because the first step MUST be accepted.
-        fAcceptance = 1.0;
+    TProposeAdaptiveStep() :
+        fLastValue(0.0), fTrials(0), fSuccesses(0), fAcceptanceWindow(-1),
+        fCovarianceWindow(-1), fNextUpdate(-1), fAcceptance(0.0), fSigma(0.0),
+        fStateInitialized(false) {
         // Set a default value for the target acceptance rate.  For sum
         // reason, the magic value in the literature is 44%.
         fTargetAcceptance = 0.44;
-        // Set the covariance window to an illegal value.  If the user sets a
-        // valid window later, that's used, otherwise a default window will be
-        // used.
-        fCovarianceWindow = -1;
     }
 
     /// Take a proposed trial point to fill, the current point, and the
@@ -436,9 +429,6 @@ public:
         MCMC_DEBUG(2) << " Recent acceptance rate was " << fAcceptance
                       << " with an adjusted width of " << fSigma
                       << std::endl;
-        // Reset the success and trials counts.
-        fTrials = 0;
-        fSuccesses = 0;
         // Initialize the central point.
         fCentralPoint.resize(fLastPoint.size());
         std::copy(fLastPoint.begin(), fLastPoint.end(), fCentralPoint.begin());
@@ -462,20 +452,29 @@ public:
             }
         }
         fDecomposition.ResizeTo(fLastPoint.size(), fLastPoint.size());
+        // Take a wild guess at width to get the right acceptance.
+        if (fSigma < 0.01*std::sqrt(1.0/fLastPoint.size())) {
+            fSigma = std::sqrt(1.0/fLastPoint.size());
+        }
         // Set a default window to average the covariance over.  This
         // basically averages over everything.
-        int minWindow = std::pow(1.0*fLastPoint.size(),3.0) + 1000;
-        // Set the covariance window to be very large. 
+        int minWindow = 1000;
         if (fCovarianceWindow < minWindow) fCovarianceWindow = 10000000;
-        UpdateProposal();
+        // Reset the success and trials counts.
+        fTrials = 0;
+        fSuccesses = 0;
         // After reseting, erase the acceptance history.
         fAcceptance = fTargetAcceptance;
+        // This makes sure everything is set properly.
+        UpdateProposal();
     }
     
 private:
 
     // Return to a default state.
     void InitializeState(const Vector& current, const double value) {
+        if (fStateInitialized) return;
+        fStateInitialized = true;
         if (fLastPoint.size() < 1) {
             SetDim(current.size());
         }
@@ -484,20 +483,14 @@ private:
             MCMC_ERROR << "Mismatch in the dimensionality."
                        << std::endl;
         }
-        if (fCentralPoint.size() == fLastPoint.size()) {
-            // Already initialized.
-            return;
-        }
         fLastValue = value;
         std::copy(current.begin(), current.end(), fLastPoint.begin());
         // Set a default window to average the acceptance over.
         fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),2.0) + 1000;
-        // Take a wild guess at width to get the right acceptance.
-        fSigma = std::sqrt(1.0/fLastPoint.size());
-        // Reset the proposal covariance.
-        ResetProposal();
         // The steps until the next update.
         fNextUpdate = fAcceptanceWindow;
+        // Reset the proposal covariance.
+        ResetProposal();
     }
     
     /// This updates the current state.  The new proposals are adjusted based
@@ -609,6 +602,8 @@ private:
     // The current width of the proposal.
     double fSigma;
 
+    // Keep track of whether we've actually been called.
+    bool fStateInitialized;
 };
 
 // MIT License

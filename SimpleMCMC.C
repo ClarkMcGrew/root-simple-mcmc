@@ -111,9 +111,13 @@ void SimpleMCMC() {
 
     mcmc.Start(p,false);
 
+    mcmc.GetProposeStep().ResetProposal();
+
     // Burnin the chain (don't save the output)
     for (int i=0; i<10000; ++i) mcmc.Step(false);
 
+    std::cout << "Finished burnin " << std::endl;
+    
     mcmc.GetProposeStep().ResetProposal();
 
     // Run the chain (now with output to the tree).

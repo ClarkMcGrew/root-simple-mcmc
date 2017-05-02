@@ -101,17 +101,17 @@ public:
 
         // Make sure that the separation scale doesn't run away.  This is
         // needed for the "zero background corner case".
-        v = point[SystematicCorrection::kBackgroundSeparationScale]/100.0;
+        v = point[SystematicCorrection::kBackgroundSeparationScale]/5.0;
+        logLikelihood -= 0.5*v*v;
+
+        // Make sure that the fake muon decay probability doesn't run away.
+        // This is needed for the "zero signal corner case".
+        v = point[SystematicCorrection::kFakeMuDkProb]/1.0;
         logLikelihood -= 0.5*v*v;
 
         // Make sure that the decay effiency doesn't run away.  This is needed
         // for the "zero background corner case".
-        v = point[SystematicCorrection::kMuDkEfficiency]/100.0;
-        logLikelihood -= 0.5*v*v;
-        
-        // Make sure that the fake muon decay probability doesn't run away.
-        // This is needed for the "zero signal corner case".
-        v = point[SystematicCorrection::kFakeMuDkProb]/100.0;
+        v = point[SystematicCorrection::kMuDkEfficiency]/1.0;
         logLikelihood -= 0.5*v*v;
         
         return logLikelihood;

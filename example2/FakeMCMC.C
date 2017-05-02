@@ -10,10 +10,10 @@
 #include <sstream>
 #include <iomanip>
 
-const int gBurninCycles = 3;
-const int gBurninLength = 3000;
+const int gBurninCycles = 2;
+const int gBurninLength = 10000;
 
-const int gCycles = 4;
+const int gChainCycles = 4;
 const int gChainLength = 50000;
 
 void FakeMCMC() {
@@ -64,15 +64,21 @@ void FakeMCMC() {
     // Set the number of dimensions for the proposal.
     proposal.SetDim(like.GetDim());
     
+    proposal.SetGaussian(0,std::sqrt(1.0+like.MCTrueValues[0]));
+    proposal.SetGaussian(1,std::sqrt(1.0+like.MCTrueValues[1]));
+
     // The number of dimensions in the point needs to agree with the number of
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
     Vector p(like.GetDim());
+
+    // Set the starting point.
     for (std::size_t i=0; i<p.size(); ++i) {
-        p[i] = like.MCTrueValues[i] + gRandom->Uniform(-1.0,1.0);
+        p[i] = like.MCTrueValues[i];
     }
- 
+    p[0] += gRandom->Gaus(0.0,std::sqrt(p[0]));
+    p[1] += gRandom->Gaus(0.0,std::sqrt(p[1]));
     mcmc.Start(p,false);
 
     like.WriteSimulation(p,"initial");
@@ -102,18 +108,22 @@ void FakeMCMC() {
 
         std::stringstream burninName;
         burninName << "burnin" << burnin+1;
-        for (int i=0; i<gBurninLength; ++i) mcmc.Step(false);
+        int length = gBurninLength*(burnin+1)/gBurninCycles;
+        std::cout << "Start new burnin phase ("<< length
+                  << " steps)" << std::endl;
+        for (int i=0; i<length; ++i) mcmc.Step(false);
         like.WriteSimulation(proposal.GetEstimatedCenter(),
                              burninName.str().c_str());
     
-        THStack *burninStack = new THStack("burninStack", "A toy experiment");
-        burninStack->Add(like.SimulatedDecayTag);
-        burninStack->Add(like.SimulatedSeparated);
-        burninStack->Add(like.SimulatedClose);
+        THStack *simStack = new THStack("simStack", "A toy experiment");
+        simStack->Add(like.SimulatedDecayTag);
+        simStack->Add(like.SimulatedSeparated);
+        simStack->Add(like.SimulatedClose);
         {
             p = proposal.GetEstimatedCenter();
             std::stringstream title;
-            title << "Burnin @" << std::fixed << std::setprecision(2);
+            title << "Burn-in " << burnin + 1
+                  <<" @" << std::fixed << std::setprecision(2);
             title << " (" << p[0];
             for (std::size_t i=1; i<p.size(); ++i) {
                 title << ", " << p[i];
@@ -122,57 +132,40 @@ void FakeMCMC() {
             dataStack->SetTitle(title.str().c_str());
         }
         dataStack->Draw();
-        burninStack->Draw("same");
+        simStack->Draw("same");
         gPad->Print(("FakeMCMC-" + burninName.str() + ".png").c_str());
     }
 
-    proposal.UpdateProposal();
+
+    for (int chain = 0; chain < gChainCycles; ++chain) {
+        proposal.UpdateProposal();
     
-    // Run the chain (now with output to the tree).
-    std::cout << "Start the chain" << std::endl;
-    for (int i=0; i<gChainLength; ++i) mcmc.Step();
-    like.WriteSimulation(proposal.GetEstimatedCenter(),"midway");
-    
-    THStack *midwayStack = new THStack("midwayStack", "A toy experiment");
-    midwayStack->Add(like.SimulatedDecayTag);
-    midwayStack->Add(like.SimulatedSeparated);
-    midwayStack->Add(like.SimulatedClose);
-    {
+        // Run the chain (now with output to the tree).
+        std::cout << "Start chain " << chain << std::endl;
+        for (int i=0; i<gChainLength; ++i) mcmc.Step();
+        like.WriteSimulation(proposal.GetEstimatedCenter(),"midway");
+        
+        THStack *simStack = new THStack("simStack", "A toy experiment");
+        simStack->Add(like.SimulatedDecayTag);
+        simStack->Add(like.SimulatedSeparated);
+        simStack->Add(like.SimulatedClose);
         p = proposal.GetEstimatedCenter();
         std::stringstream title;
-        title << "Midway Chain @" << std::fixed << std::setprecision(2);
+        title << "Chain " << chain << " @"
+              << std::fixed << std::setprecision(2);
         title << " (" << p[0];
         for (std::size_t i=1; i<p.size(); ++i) {
             title << ", " << p[i];
         }
         title << ")";
         dataStack->SetTitle(title.str().c_str());
+        dataStack->Draw();
+        simStack->Draw("same");
+
+        std::stringstream name;
+        name << "FakeMCMC-chain" << chain << ".png";
+        gPad->Print(name.str().c_str());
     }
-    dataStack->Draw();
-    midwayStack->Draw("same");
-    gPad->Print("FakeMCMC-midway.png");
-    
-    for (int i=0; i<gChainLength; ++i) mcmc.Step();
-    like.WriteSimulation(proposal.GetEstimatedCenter(),"final");
-    
-    THStack *finalStack = new THStack("finalStack", "A toy experiment");
-    finalStack->Add(like.SimulatedDecayTag);
-    finalStack->Add(like.SimulatedSeparated);
-    finalStack->Add(like.SimulatedClose);
-    {
-        p = proposal.GetEstimatedCenter();
-        std::stringstream title;
-        title << "Final Chain @" << std::fixed << std::setprecision(2);
-        title << " (" << p[0];
-        for (std::size_t i=1; i<p.size(); ++i) {
-            title << ", " << p[i];
-        }
-        title << ")";
-        dataStack->SetTitle(title.str().c_str());
-    }
-    dataStack->Draw();
-    finalStack->Draw("same");
-    gPad->Print("FakeMCMC-final.png");
     
     if (tree) tree->Write();
     if (outputFile) delete outputFile;

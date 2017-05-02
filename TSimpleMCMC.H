@@ -412,14 +412,16 @@ public:
             fCurrentCov.Print();
         }
 
-        double trace = 0;
+        double trace = 0.0;
         for (int i=0; i<fLastPoint.size(); ++i) trace += fCurrentCov(i,i);
-        MCMC_DEBUG(1) << " Covariance Trace: " << trace << " = ";
-        for (int i=0; i<4; ++i) {
+        MCMC_DEBUG(1) << " Covariance Trace: " << trace
+                      << std::endl
+                      << "        = ";
+        for (int i=0; i<fLastPoint.size(); ++i) {
             MCMC_DEBUG(1) << fCurrentCov(i,i);
             if (i<fLastPoint.size()-1) MCMC_DEBUG(1) << " + ";
+            if (i%6 == 5) MCMC_DEBUG(1) << std::endl << "           ";
         }
-        if (fLastPoint.size() >= 4) MCMC_DEBUG(1) << " ...";
         MCMC_DEBUG(1) << std::endl;
         
         TDecompChol chol(fCurrentCov);

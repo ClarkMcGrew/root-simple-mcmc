@@ -71,6 +71,7 @@ struct FakeData {
     }
 
     void MakeSignalEvent(Event& row) {
+#ifndef SKIP_LOG_GAUSS_RESOLUTION
         double resWidth = std::log(1.0+TrueResolution);
         double v = gRandom->Gaus(0.0,resWidth);
         double m = TrueScale*135.0*std::exp(v);
@@ -79,6 +80,12 @@ struct FakeData {
             m = TrueScale*135.0*std::exp(v);
         }
         row.Mass = m;
+#else
+        TrueResolution = 0.3;
+        double resWidth = TrueScale*TrueResolution*135.0;
+        do {row.Mass = gRandom->Gaus(TrueScale*135.0,resWidth);}
+        while (row.Mass<SampleMinimum || row.Mass>SampleMaximum);
+#endif
         row.TrueMass = 135.0;
         row.TrueMassSigma = TrueResolution*135.0;
         row.Type = -1; // Signal (don't look at this for data!);

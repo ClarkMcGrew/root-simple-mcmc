@@ -361,10 +361,10 @@ public:
                        << std::endl;
             return;
         }
-        MCMC_DEBUG(0) << "Overriding dimension " << dim
+        MCMC_DEBUG(0) << "Overriding proposal for dimension " << dim
                       << " to be uniform between "
                       << "[" << minimum
-                      << ", " << maximum << "]"
+                      << ", " << maximum << "]."
                       << std::endl;
         fProposalType[dim].type = 1;
         fProposalType[dim].param1 = minimum;
@@ -381,8 +381,12 @@ public:
                        << std::endl;
             return;
         }
+        MCMC_DEBUG(0) << "Overriding proposal for dimension " << dim
+                      << " to be Gaussian with "
+                      << sigma << " sigma."
+                      << std::endl;
         fProposalType[dim].type = 0;
-        fProposalType[dim].param1 = sigma;
+        fProposalType[dim].param1 = sigma*sigma;
     }
     
     /// Set the window over which to estimate the covariance.  This can
@@ -408,6 +412,16 @@ public:
             fCurrentCov.Print();
         }
 
+        double trace = 0;
+        for (int i=0; i<fLastPoint.size(); ++i) trace += fCurrentCov(i,i);
+        MCMC_DEBUG(1) << " Covariance Trace: " << trace << " = ";
+        for (int i=0; i<4; ++i) {
+            MCMC_DEBUG(1) << fCurrentCov(i,i);
+            if (i<fLastPoint.size()-1) MCMC_DEBUG(1) << " + ";
+        }
+        if (fLastPoint.size() >= 4) MCMC_DEBUG(1) << " ...";
+        MCMC_DEBUG(1) << std::endl;
+        
         TDecompChol chol(fCurrentCov);
         if (chol.Decompose()) {
             fDecomposition = chol.GetU();
@@ -419,8 +433,10 @@ public:
         ResetProposal();
     }
 
-    /// Forget information about the covariance.  This can be useful after
-    /// burnin to completely forget about the path to stocastic equilibrium.
+    /// Forget information about the covariance, and use the last point as the
+    /// new central value.  This can be useful after burnin to completely
+    /// forget about the path to stocastic equilibrium since the covariance is
+    /// reset back to the initial conditions.
     void ResetProposal() {
         MCMC_DEBUG(2) << "Reset the proposal after "
                       << fSuccesses << " successes "
@@ -439,9 +455,12 @@ public:
                 if (i == j
                     && fProposalType[i].type == 0
                     && fProposalType[i].param1 > 0) {
-                    MCMC_DEBUG(0) << "Overriding initial sigma for dimension "
+                    MCMC_DEBUG(0) << "Overriding covariance for dimension "
                                   << i 
-                                  << " to be " << fProposalType[i].param1
+                                  << " from "
+                                  << fCurrentCov(i,i)
+                                  << " to " 
+                                  << fProposalType[i].param1
                                   << std::endl;
                     fCurrentCov(i,i) = fProposalType[i].param1;
                 }

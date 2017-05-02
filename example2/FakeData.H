@@ -34,17 +34,30 @@ struct FakeData {
         DataSample.clear();
         TrueSignal = signal;
         TrueBackground = bkg;
-        do{TrueScale = gRandom->Gaus(1.0,0.15);}while (TrueScale < 0.80);
+        do{TrueScale = gRandom->Gaus(1.0,0.01);}while (TrueScale < 0.80);
         do{TrueResolution=gRandom->Gaus(0.4,0.05);}while (TrueResolution<0.15);
-        TrueSignalSeparation = gRandom->Gaus(150.0,20.0);
+        TrueSignalSeparation = gRandom->Gaus(150.0,10.0);
         TrueBackgroundSeparation = gRandom->Gaus(70.0,10.0);
         do{TrueFakeMuDk = gRandom->Gaus(0.05,0.01);}while(TrueFakeMuDk<0.03);
-        do{TrueMuDkFrac = gRandom->Gaus(0.50,0.10);}while(TrueMuDkFrac<0.3);
-        TrueFakeMuDk = 0.05;
-        TrueMuDkFrac = 0.50;
-        
+        do{TrueMuDkFrac = gRandom->Gaus(0.50,0.01);}while(TrueMuDkFrac<0.3);
+
         SampleMinimum = 0.0;
         SampleMaximum = 500.0;
+
+        std::cout << "True Signal " << TrueSignal << std::endl;
+        std::cout << "True Background " << TrueBackground << std::endl;
+        std::cout << "True Mass Scale " << TrueScale << std::endl;
+        std::cout << "True Mass Resolution " << TrueResolution << std::endl;
+        std::cout << "True Signal Separaration "
+                  << TrueSignalSeparation
+                  << std::endl;
+        std::cout << "True Background Separaration "
+                  << TrueBackgroundSeparation
+                  << std::endl;
+        std::cout  << "True Muon Decay Fake Probability " << TrueFakeMuDk
+                  << std::endl;
+        std::cout  << "True Muon Decay Efficiency " << TrueMuDkFrac
+                  << std::endl;
         
         Event row;
         for (int i=0; i<TrueSignal; ++i) {
@@ -84,7 +97,6 @@ struct FakeData {
         row.Type = -2; // Background (don't look at this for data!);
         row.Separation = std::abs(gRandom->Gaus(0.0,TrueBackgroundSeparation));
         if (gRandom->Uniform() < TrueMuDkFrac) row.MuDk = 1;
-        else if (gRandom->Uniform() < TrueFakeMuDk) row.MuDk = 1;
         else row.MuDk = 0;
     }
 

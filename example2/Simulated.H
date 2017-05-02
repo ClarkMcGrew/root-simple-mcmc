@@ -44,19 +44,19 @@ struct Simulated {
             row.Mass = gRandom->Gaus(row.TrueMass,row.TrueMassSigma);
         } while (row.Mass < 0);
         row.Type = 0; // Signal
-        row.Separation = std::abs(gRandom->Exp(100.0));
+        row.Separation = std::abs(gRandom->Exp(150.0));
         if (gRandom->Uniform() < 0.05) row.MuDk = 1;
         else row.MuDk = 0;
     }
 
     void MakeBackgroundEvent(Event& row) {
         row.TrueMass = gRandom->Uniform(0.0,1000.0);
-        row.TrueMassSigma = 0.3*row.TrueMass;
+        row.TrueMassSigma = 0.4*row.TrueMass;
         do {
             row.Mass = gRandom->Gaus(row.TrueMass,row.TrueMassSigma);
         } while (row.Mass < 0);
         row.Type = 1; // Background
-        row.Separation = std::abs(gRandom->Gaus(0.0,50.0));
+        row.Separation = std::abs(gRandom->Gaus(0.0,70.0));
         if (gRandom->Uniform() < 0.5) row.MuDk = 1;
         else row.MuDk = 0;
     }

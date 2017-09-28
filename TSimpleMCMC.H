@@ -413,11 +413,13 @@ public:
         }
 
         double trace = 0.0;
-        for (int i=0; i<fLastPoint.size(); ++i) trace += fCurrentCov(i,i);
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            trace += fCurrentCov(i,i);
+        }
         MCMC_DEBUG(1) << " Covariance Trace: " << trace
                       << std::endl
                       << "        = ";
-        for (int i=0; i<fLastPoint.size(); ++i) {
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
             MCMC_DEBUG(1) << fCurrentCov(i,i);
             if (i<fLastPoint.size()-1) MCMC_DEBUG(1) << " + ";
             if (i%6 == 5) MCMC_DEBUG(1) << std::endl << "           ";

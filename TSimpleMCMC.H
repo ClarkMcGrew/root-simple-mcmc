@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <limits>
 #include <cmath>
 
 #include <TRandom.h>
@@ -247,13 +248,13 @@ protected:
     /// The likelihood at the last accepted pont.
     double fAcceptedLogLikelihood;
     
-    /// The proposed point for the most recent step (This may be the same as
-    /// the accepted point).
-    Vector fProposed;
-
     /// The trial step.  The difference between the previous point and the new
     /// proposed point.
     Vector fTrialStep;
+
+    /// The proposed point for the most recent step (This may be the same as
+    /// the accepted point).
+    Vector fProposed;
 
     /// The likelihood at the last proposed point.
     double fProposedLogLikelihood;
@@ -432,6 +433,73 @@ public:
             return;
         }
 
+        // The Cholesky decomposition has failed.  That usually means that the
+        // current estimate of the covariance has a one or more pairs of
+        // variables that are too correlated, or that the variance of one of
+        // the variables has become to small.  This can happen when the chain
+        // gets "stuck" at a point.  The solution tried here is to look
+        // variables that have a very small variance and to increase it.  It
+        // also looks for pairs of variables that have a large correlation and
+        // "manually" reduces the correlation.
+
+        // Check for very small variances.
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            // The prechain estimate of the variance for the variable.
+            double expectedVariance = 1.0;
+            if (fProposalType[i].type == 0 && fProposalType[i].param1>0) {
+                // A Gaussian proposal with a variance other than one...
+                expectedVariance = fProposalType[i].param1;
+            }
+            else if (fProposalType[i].type == 1) {
+                // A uniform proposal...
+                expectedVariance = fProposalType[i].param2;
+                expectedVariance -= fProposalType[i].param1;
+                expectedVariance = expectedVariance*expectedVariance/12.0;
+            }
+            else {
+                MCMC_ERROR << "Illegal proposal type for dimension " << i
+                           << ": Type is " << fProposalType[i].type
+                           << std::endl;
+                throw;
+            }
+            // The minimum scale of the covariance relative to the prechain
+            // estimate of the variance.  This should be picked to make sure
+            // that there aren't numeric problems...
+            double minimum
+                = std::sqrt(std::numeric_limits<Parameter>::epsilon());
+            if (fCurrentCov(i,i) < minimum*expectedVariance) {
+                MCMC_DEBUG(1) << "Variance for dimension " << i
+                              << " has been increased from " << fCurrentCov(i,i)
+                              << " to " << minimum*expectedVariance
+                              << std::endl;
+                fCurrentCov(i,i) = minimum*expectedVariance;
+            }
+        }
+
+        // Check for very large correlations
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            for (std::size_t j=i+1; j<fLastPoint.size(); ++j) {
+                double correlation = fCurrentCov(i,j);
+                correlation /= std::sqrt(fCurrentCov(i,i));
+                correlation /= std::sqrt(fCurrentCov(j,j));
+                // Don't worry about "small" correlations.
+                double maxCorrelation = 0.95;
+                if (correlation < maxCorrelation) continue;
+                // Oops, the correlation is too large, so reduce it..
+                fCurrentCov(i,j) = maxCorrelation*maxCorrelation;
+                fCurrentCov(i,j) *= std::sqrt(fCurrentCov(i,i));
+                fCurrentCov(i,j) *= std::sqrt(fCurrentCov(j,j));
+                fCurrentCov(j,i) = fCurrentCov(i,j);
+            }
+        }
+
+        // Make another attempt at finding the Cholesky decomposition.
+        TDecompChol chol2(fCurrentCov);
+        if (chol2.Decompose()) {
+            fDecomposition = chol2.GetU();
+            return;
+        }
+
         // Something is going very wrong, so reset the Proposal.  This
         // probably won't work, but it pays to try.
         ResetProposal();
@@ -512,7 +580,7 @@ private:
         fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),2.0) + 1000;
         // The steps until the next update.
         fNextUpdate = fAcceptanceWindow;
-        // Reset the proposal covariance.
+        // Reset the proposal covariance as part of the initialization.
         ResetProposal();
     }
     
@@ -524,7 +592,7 @@ private:
         ++fTrials;
 
         // Make a quick check to see if the point moved.  This gets it right
-        // more than 99.9% of the time.
+        // more than 99.9% of the time (i.e. it's Good Enough (tm)).
         bool accepted = false;
         if (value != fLastValue || current[1] != fLastPoint[1]) accepted = true;
 
@@ -538,18 +606,23 @@ private:
 
         // Update the scale for the proposal step.  If the acceptance is to
         // small, then the scale should be reduced.  If the acceptance is to
-        // large, then the scale should be increase.
+        // large, then the scale should be increase.  This is set so that if
+        // the ratio of measured acceptance to the target acceptance is one,
+        // then the value of fSigma will not change.  The exponent is chosen
+        // to control how quickly the fSigma value will be changed.w
         fSigma *= std::pow(fAcceptance/fTargetAcceptance,
                            std::min(0.001,0.5/fAcceptanceWindow));
         
-        // Update the estimate of the central value.
+        // Update the estimate of the central value.  This is simply a running
+        // average of the position of the points in the posterior.
         for (std::size_t i=0; i< current.size(); ++i) {
             fCentralPoint[i] *= 1.0*std::min(fCovarianceWindow,fTrials);
             fCentralPoint[i] += current[i];
             fCentralPoint[i] /= 1.0*std::min(fCovarianceWindow,fTrials) + 1.0;
         }
 
-        // Update the estimate of the covariance.
+        // Update the estimate of the covariance.  This is a running
+        // calculation of the covariance.
         for (std::size_t i=0; i<current.size(); ++i) {
             for (std::size_t j=0; j<i+1; ++j) {
                 double v = fCurrentCov(i,j);
@@ -563,6 +636,8 @@ private:
             }
         }
 
+        // Periodically change how the proposal is updated based on the
+        // current estimate of the covariance.
         if (accepted && (--fNextUpdate)<1) {
             fNextUpdate = fAcceptanceWindow + 0.5*fSuccesses;
             UpdateProposal();
@@ -601,16 +676,22 @@ private:
     // The type of distribution to draw the propsal for a dimension from.
     std::vector<ProposalType> fProposalType;
     
-    // The number of times a step has been proposed.
+    // The number of times a step has been proposed since the last reset.
     int fTrials;
 
-    // The total number of successes
+    // The total number of successes since the last reset
     int fSuccesses;
     
     // The window to average the acceptance over.
     int fAcceptanceWindow;
 
-    // The window to average the covariance and central value over.
+    // The window to average the covariance and central value over.  The
+    // covariance window should be several times the autocorrelation period.
+    // It should usually be very large so that all to points used to probe the
+    // posterior are used.  Setting it to a smaller value means that the local
+    // covariance of the posterior will be used.  This might be important if
+    // the posterior is extremely non-Gaussian (e.g. it's a "banana
+    // posterior").
     int fCovarianceWindow;
 
     // A counter until the next update gets done.

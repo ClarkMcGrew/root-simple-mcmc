@@ -406,10 +406,10 @@ public:
                       << " w/ width: " << fSigma << ")"
                       << std::endl;
 
+        MCMC_DEBUG(1) << " Covariance estimated with window of"
+                      << " " << fCovarianceTrials
+                      << std::endl;
         if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 5) {
-            MCMC_DEBUG(1) << " Covariance estimated with window of"
-                          << " " << fCovarianceWindow
-                          << std::endl;
             fCurrentCov.Print();
         }
 
@@ -426,6 +426,16 @@ public:
             if (i%6 == 5) MCMC_DEBUG(1) << std::endl << "           ";
         }
         MCMC_DEBUG(1) << std::endl;
+        
+        // The proposal is being updated, so deweight the current covariance
+        // so that the new information weighs more.
+        fCovarianceTrials = std::max(1000.0,0.1*fCovarianceTrials);
+        fCovarianceTrials = std::min(fCovarianceTrials,0.1*fCovarianceWindow);
+        
+        // The proposal is being updated, so deweight the current acceptance 
+        // so that the new information weighs more.
+        fAcceptanceTrials = std::max(1000.0,0.1*fAcceptanceTrials);
+        fAcceptanceTrials = std::min(fAcceptanceTrials,0.1*fAcceptanceWindow);
         
         TDecompChol chol(fCurrentCov);
         if (chol.Decompose()) {
@@ -517,9 +527,15 @@ public:
         MCMC_DEBUG(2) << " Recent acceptance rate was " << fAcceptance
                       << " with an adjusted width of " << fSigma
                       << std::endl;
-        // Initialize the central point.
-        fCentralPoint.resize(fLastPoint.size());
-        std::copy(fLastPoint.begin(), fLastPoint.end(), fCentralPoint.begin());
+        // Reset the success and trials counts.
+        fTrials = 0;
+        fSuccesses = 0;
+        // Take a wild guess at width to get the right acceptance.
+        if (fSigma < 0.01*std::sqrt(1.0/fLastPoint.size())) {
+            fSigma = std::sqrt(1.0/fLastPoint.size());
+        }
+        // Setup the spece for the decomposition.
+        fDecomposition.ResizeTo(fLastPoint.size(), fLastPoint.size());
         // Set up the initial estimate of the covariance.
         fCurrentCov.ResizeTo(fLastPoint.size(), fLastPoint.size());
         for (std::size_t i = 0; i < fLastPoint.size(); ++i) {
@@ -542,20 +558,19 @@ public:
                 else fCurrentCov(i,j) = fCurrentCov(j,i) = 0.0;
             }
         }
-        fDecomposition.ResizeTo(fLastPoint.size(), fLastPoint.size());
-        // Take a wild guess at width to get the right acceptance.
-        if (fSigma < 0.01*std::sqrt(1.0/fLastPoint.size())) {
-            fSigma = std::sqrt(1.0/fLastPoint.size());
-        }
         // Set a default window to average the covariance over.  This
         // basically averages over everything.
         int minWindow = 1000;
         if (fCovarianceWindow < minWindow) fCovarianceWindow = 10000000;
-        // Reset the success and trials counts.
-        fTrials = 0;
-        fSuccesses = 0;
         // After reseting, erase the acceptance history.
         fAcceptance = fTargetAcceptance;
+        fAcceptanceTrials = std::min(10.0, 0.5*fAcceptanceWindow);
+        // Initialize the central point.
+        fCentralPoint.resize(fLastPoint.size());
+        std::copy(fLastPoint.begin(), fLastPoint.end(), fCentralPoint.begin());
+        // Start with a non-zero number of trials to represent the prior
+        // information coming from the first guess at the central point.
+        fCentralPointTrials =  std::min(10.0, 0.1*fCovarianceWindow);
         // This makes sure everything is set properly.
         UpdateProposal();
     }
@@ -600,9 +615,10 @@ private:
         if (accepted) ++fSuccesses;
         
         // Update the acceptance over the last "fAcceptanceWindow" trials.  
-        fAcceptance *= 1.0*std::min(fAcceptanceWindow,fTrials);
+        fAcceptance *= fAcceptanceTrials;
         if (accepted) fAcceptance = fAcceptance+1.0;
-        fAcceptance /= 1.0*std::min(fAcceptanceWindow,fTrials) + 1.0;
+        fAcceptance /= fAcceptanceTrials + 1.0;
+        fAcceptanceTrials = std::min(fAcceptanceWindow,fAcceptanceTrials+1.0);
 
         // Update the scale for the proposal step.  If the acceptance is to
         // small, then the scale should be reduced.  If the acceptance is to
@@ -616,10 +632,12 @@ private:
         // Update the estimate of the central value.  This is simply a running
         // average of the position of the points in the posterior.
         for (std::size_t i=0; i< current.size(); ++i) {
-            fCentralPoint[i] *= 1.0*std::min(fCovarianceWindow,fTrials);
+            fCentralPoint[i] *= fCentralPointTrials;
             fCentralPoint[i] += current[i];
-            fCentralPoint[i] /= 1.0*std::min(fCovarianceWindow,fTrials) + 1.0;
+            fCentralPoint[i] /= fCentralPointTrials + 1;
         }
+        fCentralPointTrials = std::min(fCovarianceWindow,
+                                       fCentralPointTrials+1.0);
 
         // Update the estimate of the covariance.  This is a running
         // calculation of the covariance.
@@ -628,18 +646,20 @@ private:
                 double v = fCurrentCov(i,j);
                 double r = (current[i]-fCentralPoint[i])
                     *(current[j]-fCentralPoint[j]);
-                v *= 1.0*std::min(fCovarianceWindow,fTrials);
+                v *= fCovarianceTrials;
                 v += r;
-                v /= 1.0*std::min(fCovarianceWindow,fTrials) + 1.0;
+                v /= fCovarianceTrials + 1.0;
                 if (i == j) fCurrentCov(i,j) = v;
                 else fCurrentCov(i,j) = fCurrentCov(j,i) = v;
             }
         }
-
+        fCovarianceTrials = std::min(fCovarianceWindow,
+                                     fCovarianceTrials+1.0);
+        
         // Periodically change how the proposal is updated based on the
         // current estimate of the covariance.
         if (accepted && (--fNextUpdate)<1) {
-            fNextUpdate = fAcceptanceWindow + 0.5*fSuccesses;
+            fNextUpdate= fAcceptanceWindow + 0.5*fSuccesses;
             UpdateProposal();
         }
         
@@ -658,8 +678,25 @@ private:
     // The current (running) estimate for the central value of each parameter.
     Vector fCentralPoint;
 
+    // The trials being used for the current estimated central value.  This
+    // will be a value between one and fCovarianceWindow.
+    double fCentralPointTrials;
+    
     // The current (running) estimate of the covariance.
     TMatrixD fCurrentCov;
+
+    // The trials being used for the current estimated covariance.  This
+    // will be a value between one and fCovarianceWindow.
+    double fCovarianceTrials;
+    
+    // The window to average the covariance and central value over.  The
+    // covariance window should be several times the autocorrelation period.
+    // It should usually be very large so that all to points used to probe the
+    // posterior are used.  Setting it to a smaller value means that the local
+    // covariance of the posterior will be used.  This might be important if
+    // the posterior is extremely non-Gaussian (e.g. it's a "banana
+    // posterior").
+    double fCovarianceWindow;
 
     // The current Cholesky decomposition of the covariance.  This is not
     // updated everytime the fCurrentCov estimate changes.
@@ -682,23 +719,18 @@ private:
     // The total number of successes since the last reset
     int fSuccesses;
     
-    // The window to average the acceptance over.
-    int fAcceptanceWindow;
-
-    // The window to average the covariance and central value over.  The
-    // covariance window should be several times the autocorrelation period.
-    // It should usually be very large so that all to points used to probe the
-    // posterior are used.  Setting it to a smaller value means that the local
-    // covariance of the posterior will be used.  This might be important if
-    // the posterior is extremely non-Gaussian (e.g. it's a "banana
-    // posterior").
-    int fCovarianceWindow;
-
     // A counter until the next update gets done.
     int fNextUpdate;
     
     // The recent acceptance rate.
     double fAcceptance;
+
+    // The trials being used for the current estimated acceptance rate.  This
+    // will be a value between one and fAcceptanceWindow.
+    double fAcceptanceTrials;
+    
+    // The window to average the acceptance over.
+    double fAcceptanceWindow;
 
     // The target acceptance rate for the chain.
     double fTargetAcceptance;

@@ -6,7 +6,7 @@ class TDummyLogLikelihood {
 public:
     // Determine the number of dimensions.  This is where the dimensions are
     // defined, and everything else uses it.
-    std::size_t GetDim() const {return 10;}
+    std::size_t GetDim() const {return 100;}
 
     // Calculate the likelihood.  The dummy likelihood is a Gaussian (with
     // covariance) centered at zero.  The covariance is set in Init() (below).
@@ -29,7 +29,7 @@ public:
         // Set the sigma for each variable.
         for (std::size_t i = 0; i<GetDim(); ++i) {
             // double sigma = 1.0;
-            double sigma = 1.0*i + 0.1;
+            double sigma = 1.0*i + 1.0;
             Covariance(i,i) = sigma*sigma;
         }
 
@@ -39,9 +39,23 @@ public:
                 double sig2 = std::sqrt(Covariance(j,j));
                 // Now give some correlations to the likelihood.  (Uncomment
                 // the one you want to try).
-                Covariance(i,j) = gRandom->Uniform(0.0,0.9)*sig1*sig2;
+
+                // Choose a random correlation
+                // Covariance(i,j) = gRandom->Uniform(-0.999,0.999)*sig1*sig2;
+
+                // Choose 90% correlation
                 // Covariance(i,j) = 0.90*sig1*sig2;
+
+                // Choose no correlation
                 // Covariance(i,j) = 0.0;
+
+                // Choose a correlation based on the variables.  Neighbors are
+                // not correlated, but there is more correlation as the
+                // variables are further apart.
+                if (i+j==GetDim()-1) {
+                    Covariance(i,j) = 0.999*sig1*sig2*(j - i)/(GetDim()-1.0);
+                }
+
                 Covariance(j,i) = Covariance(i,j);
             }
         }
@@ -68,10 +82,8 @@ public:
         Error = Covariance;
         Error.Invert();
 
-        if (GetDim() < 5) {
-            Covariance.Print();
-            Error.Print();
-        }
+        Covariance.Print();
+        Error.Print();
     }
 
     TMatrixD Covariance;
@@ -86,7 +98,7 @@ void SimpleMCMC() {
     TTree *tree = NULL;
 #else
     TFile *outputFile = new TFile("SimpleMCMC.root","recreate");
-    TTree *tree = new TTree("SimpleMCMC","Tree of accepted points");
+    TTree *tree = new TTree("SimpleMCMC","Tree of accepted pqoints");
 #endif
     TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();
@@ -111,16 +123,17 @@ void SimpleMCMC() {
 
     mcmc.Start(p,false);
 
-    mcmc.GetProposeStep().ResetProposal();
+    // Burnin the chain (don't save the output)
+    for (int i=0; i<10000+p.size()*p.size(); ++i) mcmc.Step(false);
+    std::cout << "Finished burnin chain" << std::endl;
 
     // Burnin the chain (don't save the output)
-    for (int i=0; i<10000; ++i) mcmc.Step(false);
-
-    std::cout << "Finished burnin " << std::endl;
-    
-    mcmc.GetProposeStep().ResetProposal();
+    mcmc.GetProposeStep().UpdateProposal();
+    for (int i=0; i<10000+10*p.size()*p.size(); ++i) mcmc.Step(false);
+    std::cout << "Finished burnin chain" << std::endl;
 
     // Run the chain (now with output to the tree).
+    mcmc.GetProposeStep().UpdateProposal();
     for (int i=0; i<1000000; ++i) mcmc.Step();
 
     if (tree) tree->Write();

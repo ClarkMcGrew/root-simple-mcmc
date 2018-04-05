@@ -16,16 +16,17 @@
 
 #define FakeGP_ERROR (std::cout <<__FILE__<<":: " << __LINE__ << ": " )
 
-/// A Gaussian process provides a method for determining the possible
-/// variations of a function between measured points, and is a very powerful
-/// method for approximating functions.  For a real reference, check Rasmussen
-/// & Williams, "Gaussian Processes for Machine Learning" (available on line
-/// at www.GaussianProcess.org/gpml).  This class takes the general idea of a
-/// Gaussian process (i.e. the being able to set the correlation between
-/// points) and simplifies the overall behaviour to have linear interpolation
-/// between the control (i.e. measured) points.  This is much faster than
-/// dealing with the necessary matrix inversions when handling a real GP, and
-/// is good enough for finding a set of interpolated weights.
+/// (Work In Progress!!!) A Gaussian process provides a method for determining
+/// the possible variations of a function between measured points, and is a
+/// very powerful method for approximating functions.  For a real reference,
+/// check Rasmussen & Williams, "Gaussian Processes for Machine Learning"
+/// (available on line at www.GaussianProcess.org/gpml).  This class takes the
+/// general idea of a Gaussian process (i.e. the being able to set the
+/// correlation between points) and simplifies the overall behaviour to have
+/// linear interpolation between the control (i.e. measured) points.  This is
+/// much faster than dealing with the necessary matrix inversions when
+/// handling a real GP, and is good enough for finding a set of interpolated
+/// weights.
 ///
 /// The object is created between a lower and upper bound with a fixed number
 /// of control points.  It's assumed that the results of this will be a

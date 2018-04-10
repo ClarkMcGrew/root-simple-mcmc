@@ -1,5 +1,5 @@
-#ifndef SimpleMCMC_H_SEEN
-#define SimpleMCMC_H_SEEN
+#ifndef TSimpleMCMC_H_SEEN
+#define TSimpleMCMC_H_SEEN
 
 #include <iostream>
 #include <vector>

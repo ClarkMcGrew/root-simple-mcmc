@@ -3,16 +3,19 @@
 #include <TMatrixD.h>
 #include <TVectorD.h>
 
+#include <sstream>
+
 // A dummy log likelihood for testing.  This is an example, but don't
 // slavishly copy it (or you will be sorry!).
 class TDummyLogLikelihood {
 public:
     // Determine the number of dimensions.  This is where the dimensions are
     // defined, and everything else uses it.
-    std::size_t GetDim() const {return 20;}
+    std::size_t GetDim() const {return 4;}
 
-    // Calculate the likelihood.  The dummy likelihood is a Gaussian (with
-    // covariance) centered at zero.  The covariance is set in Init() (below).
+    // Calculate the log(likelihood).  The dummy likelihood is a Gaussian
+    // (with covariance) centered at zero.  The covariance is set in Init()
+    // (below).  
     double operator()(const Vector& point)  const {
         double logLikelihood = 0.0;
 
@@ -25,12 +28,12 @@ public:
         return logLikelihood;
     }
 
-    // Note that this needs to be the grad(-logLikelihood);
+    // Note that this needs to be the grad(log(Likelihood)).  
     bool operator() (Vector& g, const Vector& p) {
         for (int i=0; i<p.size(); ++i) {
             g[i] = 0.0;
             for (int j=0; j<p.size(); ++j) {
-                g[i] += Error(i,j)*p[j];
+                g[i] -= Error(i,j)*p[j];
             }
         }
         return true;
@@ -55,18 +58,19 @@ public:
                 // the one you want to try).
 
                 // Choose a random correlation
-                // Covariance(i,j) = gRandom->Uniform(-0.999,0.999)*sig1*sig2;
-
-                // Choose 90% correlation
-                // Covariance(i,j) = 0.90*sig1*sig2;
-
+#ifdef RANDOM_CORRELATION
+                Covariance(i,j) = gRandom->Uniform(-0.999,0.999)*sig1*sig2;
+#endif
+                
                 // Choose no correlation
-                // Covariance(i,j) = 0.0;
+#define NO_CORRELATION
+#ifdef NO_CORRELATION
+                Covariance(i,j) = 0.0;
+#endif
 
-                // Choose a correlation based on the variables.  Neighbors are
+                // Choose a correlation based on the variables.  Neighbors are 
                 // not correlated, but there is more correlation as the
                 // variables are further apart.
-#define VERY_CORRELATED
 #ifdef VERY_CORRELATED
                 if (i+j==GetDim()-1) {
                     Covariance(i,j) = 0.999*sig1*sig2*(j - i)/(GetDim()-1.0);
@@ -109,7 +113,7 @@ public:
 TMatrixD TDummyLogLikelihood::Covariance;
 TMatrixD TDummyLogLikelihood::Error;
 
-void SimpleHMC() {
+void SimpleHMC(int maxEvals=-1) {
     std::cout << "Simple HMC Loaded" << std::endl;
 
 #ifdef NO_OUTPUT
@@ -119,8 +123,8 @@ void SimpleHMC() {
     TFile *outputFile = new TFile("SimpleHMC.root","recreate");
     TTree *tree = new TTree("SimpleHMC","Tree of accepted pqoints");
 #endif
-    // TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
-    TSimpleHMC<TDummyLogLikelihood> hmc(tree);
+    TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
+    // TSimpleHMC<TDummyLogLikelihood> hmc(tree);
     TDummyLogLikelihood& like = hmc.GetLogLikelihood();
 
     // Initialize the likelihood (if you need to).  The dummy likelihood
@@ -133,18 +137,21 @@ void SimpleHMC() {
     // dimensions.
     Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
-    for (std::size_t i=0; i<p.size(); ++i) p[i] = 0;
 
     hmc.Start(p,false);
 
     // Burnin the chain (don't save the output)
-    int trials = 50000;
+    int trials = 10000;
     for (int i=0; i<trials; ++i) {
-        std::cout << i << " " << hmc.GetPotentialCount()
-                  << std::endl;
+        if (i%1000 == 0) {
+            std::cout << i << " " << hmc.GetPotentialCount()
+                      << std::endl;
+        }
         hmc.Step(true);
+        if (maxEvals > 0 && hmc.GetPotentialCount() > maxEvals) break;
     }
-    std::cout << trials << " " << hmc.GetPotentialCount()
+    std::cout << "Finished " << trials
+              << " requested trials with calls " << hmc.GetPotentialCount()
               << std::endl;
 
     if (tree) tree->Write();
@@ -156,6 +163,11 @@ void SimpleHMC() {
 // script and then run it using ./a.out which will produce a file name
 // "SimpleHMC.root"
 int main(int argc, char **argv) {
-    SimpleHMC();
+    int maxEvaluations = -1;
+    if (argc > 1) {
+        std::istringstream input(argv[1]);
+        input >> maxEvaluations;
+    }
+    SimpleHMC(maxEvaluations);
 }
 #endif

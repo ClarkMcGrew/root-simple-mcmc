@@ -185,8 +185,9 @@ public:
         fAcceptedMomentum = fProposedMomentum;
         fAcceptedKinetic = KineticEnergy(fAcceptedMomentum);
 
-        double epsilon = gRandom->Uniform(0.5*fMeanEpsilon,1.5*fMeanEpsilon);
-        LeapFrog(fProposed,fProposedMomentum,fAccepted,epsilon,fLeapFrogSteps);
+        double epsilon = gRandom->Uniform(0.9*fMeanEpsilon,1.1*fMeanEpsilon);
+        LeapFrog(fProposed,fProposedMomentum,fAccepted,
+                 epsilon,std::abs(fLeapFrogSteps));
         
         // Find the proposed kinetic and potential energy
         fProposedKinetic = KineticEnergy(fProposedMomentum);
@@ -222,7 +223,7 @@ public:
 
         // Update the best guess at the best step length.
         fMeanEpsilon *= 1.0
-            + 0.01*(fCurrentAcceptance-fTargetAcceptance)/fTargetAcceptance;
+            + 0.001*(fCurrentAcceptance-fTargetAcceptance)/fTargetAcceptance;
 
         // Update the running estimate of the covariance.
         UpdateCovariance(fAccepted);
@@ -245,6 +246,9 @@ public:
 
     /// Get the current value of alpha.
     double GetAlpha() const {return fAlpha;}
+
+    /// Override the automatically calculated number of leapfrog steps.
+    void SetLeapFrog(int i) {fLeapFrogSteps = -i;}
     
 private:
 
@@ -523,11 +527,18 @@ private:
         fEstimatedCovariance.EigenVectors(eigenValues);
         fEstimatedOrbitLength = 3.14*std::sqrt(eigenValues(0));
         
-        fLeapFrogSteps = 0.4*fEstimatedOrbitLength/fMeanEpsilon;
-        fLeapFrogSteps = 2*(fLeapFrogSteps/2 + 1);
+        if (fLeapFrogSteps>0) {
+            fLeapFrogSteps = 0.4*fEstimatedOrbitLength/fMeanEpsilon;
+            fLeapFrogSteps = 2*(fLeapFrogSteps/2 + 1);
+        }
+
+        double minScale = eigenValues(fEstimatedCovariance.GetNrows()-1);
+        minScale = std::sqrt(minScale);
+        
         HMC_DEBUG(1) << "     Estimated orbit: " << fEstimatedOrbitLength
+                     << " Min scale: " << minScale
                      << " Epsilon: " << fMeanEpsilon
-                     << " Leapfrog steps: " << fLeapFrogSteps
+                     << " Leapfrog steps: " << std::abs(fLeapFrogSteps)
                      << std::endl;
     }
     

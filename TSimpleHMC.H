@@ -223,7 +223,7 @@ public:
 
         // Update the best guess at the best step length.
         fMeanEpsilon *= 1.0
-            + 0.001*(fCurrentAcceptance-fTargetAcceptance)/fTargetAcceptance;
+            + 0.005*(fCurrentAcceptance-fTargetAcceptance)/fTargetAcceptance;
 
         // Update the running estimate of the covariance.
         UpdateCovariance(fAccepted);
@@ -527,14 +527,19 @@ private:
         fEstimatedCovariance.EigenVectors(eigenValues);
         fEstimatedOrbitLength = 3.14*std::sqrt(eigenValues(0));
         
+        // Estimate the scale of the smallest dimension.
+        double minScale = eigenValues(fEstimatedCovariance.GetNrows()-1);
+        minScale = std::sqrt(minScale);
+
+        // Use the size of the smallest dimension to update the step
+        // size.
+        fMeanEpsilon = std::min(minScale,fMeanEpsilon);
+        
         if (fLeapFrogSteps>0) {
             fLeapFrogSteps = 0.4*fEstimatedOrbitLength/fMeanEpsilon;
             fLeapFrogSteps = 2*(fLeapFrogSteps/2 + 1);
         }
 
-        double minScale = eigenValues(fEstimatedCovariance.GetNrows()-1);
-        minScale = std::sqrt(minScale);
-        
         HMC_DEBUG(1) << "     Estimated orbit: " << fEstimatedOrbitLength
                      << " Min scale: " << minScale
                      << " Epsilon: " << fMeanEpsilon

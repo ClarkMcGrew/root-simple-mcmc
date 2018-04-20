@@ -137,6 +137,7 @@ public:
                 fTree->Branch("Step",&fTrialStep);
             }
         }
+        fLogLikelihoodCount = 0;
     }
 
     /// Get a reference to the object that will propose the step.  The
@@ -154,6 +155,9 @@ public:
     /// actually just a typedef for your class.
     LogLikelihood& GetLogLikelihood() {return fLogLikelihood;}
 
+    /// Get the number of times the log likelihood has been called.
+    int GetLogLikelihoodCount() {return fLogLikelihoodCount;}
+
     /// Set the starting point for the mcmc.  If the optional argument is
     /// true, then the point will be saved to the output.
     void Start(Vector start, bool save=true) {
@@ -165,7 +169,7 @@ public:
 
         fTrialStep.resize(start.size());
         
-        fProposedLogLikelihood = fLogLikelihood(fProposed);
+        fProposedLogLikelihood = GetLogLikelihoodValue(fProposed);
         fAcceptedLogLikelihood = fProposedLogLikelihood;
 
         if (save) SaveStep();
@@ -191,7 +195,7 @@ public:
 
         // Find the likelihood at the new step.  The old likelihood has been
         // cached.
-        fProposedLogLikelihood = fLogLikelihood(fProposed);
+        fProposedLogLikelihood = GetLogLikelihoodValue(fProposed);
         double delta = fProposedLogLikelihood - fAcceptedLogLikelihood;
         if (delta < 0.0 ) {
             // The proposed likelihood is less than the previously accepted
@@ -231,7 +235,12 @@ protected:
 
     /// If possible, save the step.
     void SaveStep() {if (fTree) fTree->Fill();}
- 
+
+    double GetLogLikelihoodValue(const Vector& point) {
+        ++fLogLikelihoodCount;
+        return fLogLikelihood(point);
+    }
+    
     /// A class (called as a functor) to calculate the likelhood.
     LogLikelihood fLogLikelihood;
 
@@ -241,6 +250,9 @@ protected:
     /// A TTree to save the accepted points.
     TTree* fTree;
 
+    /// The number of times the likelihood has been calculated.
+    int fLogLikelihoodCount;
+    
     /// The last accepted point.  This will be the same as the proposed point
     /// if the last step was accepted.
     Vector fAccepted;

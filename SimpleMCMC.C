@@ -1,96 +1,10 @@
 #include "TSimpleMCMC.H"
 
-// A dummy log likelihood for testing.  This is an example, but don't
-// slavishly copy it (or you will be sorry!).
-class TDummyLogLikelihood {
-public:
-    // Determine the number of dimensions.  This is where the dimensions are
-    // defined, and everything else uses it.
-    std::size_t GetDim() const {return 100;}
+#include <sstream>
 
-    // Calculate the likelihood.  The dummy likelihood is a Gaussian (with
-    // covariance) centered at zero.  The covariance is set in Init() (below).
-    double operator()(const Vector& point)  const {
-        double logLikelihood = 0.0;
+#include "TDummyLogLikelihood.H"
 
-        for (std::size_t i = 0; i<GetDim(); ++i) {
-            for (std::size_t j = 0; j<GetDim(); ++j) {
-                logLikelihood -= 0.5*point[i]*Error(j,i)*point[j];
-            }
-        }
-
-        return logLikelihood;
-    }
-
-    void Init() {
-        Covariance.ResizeTo(GetDim(),GetDim());
-        Error.ResizeTo(GetDim(),GetDim());
-
-        // Set the sigma for each variable.
-        for (std::size_t i = 0; i<GetDim(); ++i) {
-            // double sigma = 1.0;
-            double sigma = 1.0*i + 1.0;
-            Covariance(i,i) = sigma*sigma;
-        }
-
-        for (std::size_t i = 0; i<GetDim(); ++i) {
-            for (std::size_t j = i+1; j<GetDim(); ++j) {
-                double sig1 = std::sqrt(Covariance(i,i));
-                double sig2 = std::sqrt(Covariance(j,j));
-                // Now give some correlations to the likelihood.  (Uncomment
-                // the one you want to try).
-
-                // Choose a random correlation
-                // Covariance(i,j) = gRandom->Uniform(-0.999,0.999)*sig1*sig2;
-
-                // Choose 90% correlation
-                // Covariance(i,j) = 0.90*sig1*sig2;
-
-                // Choose no correlation
-                // Covariance(i,j) = 0.0;
-
-                // Choose a correlation based on the variables.  Neighbors are
-                // not correlated, but there is more correlation as the
-                // variables are further apart.
-                if (i+j==GetDim()-1) {
-                    Covariance(i,j) = 0.999*sig1*sig2*(j - i)/(GetDim()-1.0);
-                }
-
-                Covariance(j,i) = Covariance(i,j);
-            }
-        }
-
-        // Make sure the covariance is positive definite.
-        do {
-            TVectorD eigenValues(GetDim());
-            Covariance.EigenVectors(eigenValues);
-            bool positiveDefinite = true;
-            for (std::size_t i = 0; i<GetDim(); ++i) {
-                if (eigenValues(i)<0.0) {
-                    positiveDefinite = false;
-                }
-            }
-            if (positiveDefinite) break;
-            for (std::size_t i = 0; i<GetDim(); ++i) {
-                for (std::size_t j = i+1; j<GetDim(); ++j) {
-                    Covariance(i,j) = 0.9*Covariance(i,j);
-                    Covariance(j,i) = Covariance(i,j);
-                }
-            }
-        } while (true);
-
-        Error = Covariance;
-        Error.Invert();
-
-        Covariance.Print();
-        Error.Print();
-    }
-
-    TMatrixD Covariance;
-    TMatrixD Error;
-};
-
-void SimpleMCMC() {
+void SimpleMCMC(int trials, int maxEvaluations) {
     std::cout << "Simple MCMC Loaded" << std::endl;
 
 #ifdef NO_OUTPUT
@@ -134,8 +48,10 @@ void SimpleMCMC() {
 
     // Run the chain (now with output to the tree).
     mcmc.GetProposeStep().UpdateProposal();
-    for (int i=0; i<1000000; ++i) mcmc.Step();
-
+    for (int i=0; i<trials; ++i) mcmc.Step();
+    std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"
+              << std::endl;
+    
     if (tree) tree->Write();
     if (outputFile) delete outputFile;
 }
@@ -143,8 +59,18 @@ void SimpleMCMC() {
 #ifdef MAIN_PROGRAM
 // This let's the example compile directly.  To compile it, use the compile.sh
 // script and then run it using ./a.out which will produce a file name
-// "SimpleMCMC.root"
+// "SimpleAHMC.root"
 int main(int argc, char **argv) {
-    SimpleMCMC();
+    int trials = 10000;
+    int maxEvaluations = -1;
+    if (argc > 1) {
+        std::istringstream input(argv[1]);
+        input >> trials;
+    }
+    if (argc > 2) {
+        std::istringstream input(argv[1]);
+        input >> maxEvaluations;
+    }
+    SimpleMCMC(trials,maxEvaluations);
 }
 #endif

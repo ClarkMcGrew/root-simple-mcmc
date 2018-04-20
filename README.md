@@ -99,3 +99,22 @@ The default class for UserProposal is TProposeAdaptiveStep which
 implements an adaptive Metropolis-Hastings step.  It has several methods
 that can be accessed using the GetProposeStep() method.  See above for an
 example.
+
+# MCMC Versions Here
+
+This repo actually contains a few different MCMC examples that I have used
+to learn about the different types of behaviors.  None of these examples is
+intended as an end user program, and I control a lot of the input
+parameters by editing the source and recompiling (hey, it's test code).
+However, the associated TSimple<blah>.H classes are fairly well tested.
+
+TSimpleMCMC.H (and friends) -- This is the adaptive MCMC described above
+
+TSimpleHMC.H (and friends) -- This is a "pure" Hamiltonian MC.
+
+TSimpleAHMC.H (and friends) -- This is an HMC implementation that uses an
+approximate version of the gradient.  The gradient is estimated based on
+the accumulated covariance of the posterior.
+
+BadGrad.C -- This is just a toy to see how accurately the gradient needs to
+be calculated.

@@ -106,7 +106,9 @@ intended as an end user program, and I control a lot of the input
 parameters by editing the source and recompiling (hey, it's test code).
 However, the associated TSimple<blah>.H classes are fairly well tested.
 
-TSimpleMCMC.H (and friends) -- This is the adaptive MCMC described above
+TSimpleMCMC.H (and friends) -- This is the adaptive MCMC described above.
+An alternative for the proposal is provided by TProposeGibbsStep.h (the
+Gibbs step is not adaptive).
 
 TSimpleHMC.H (and friends) -- This is a "pure" Hamiltonian MC.
 

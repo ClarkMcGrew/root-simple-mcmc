@@ -16,7 +16,6 @@ void SimpleMCMC(int trials, int maxEvaluations) {
 #endif
     TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();
-    TProposeAdaptiveStep& proposal = mcmc.GetProposeStep();
 
     // Initialize the likelihood (if you need to).  The dummy likelihood
     // setups a covariance to make the PDF more interesting.

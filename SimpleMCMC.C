@@ -12,7 +12,7 @@ void SimpleMCMC(int trials, int maxEvaluations) {
     TTree *tree = NULL;
 #else
     TFile *outputFile = new TFile("SimpleMCMC.root","recreate");
-    TTree *tree = new TTree("SimpleMCMC","Tree of accepted pqoints");
+    TTree *tree = new TTree("SimpleMCMC","Tree of accepted points");
 #endif
     TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();

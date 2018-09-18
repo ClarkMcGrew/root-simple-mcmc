@@ -106,15 +106,20 @@ intended as an end user program, and I control a lot of the input
 parameters by editing the source and recompiling (hey, it's test code).
 However, the associated TSimple<blah>.H classes are fairly well tested.
 
-TSimpleMCMC.H (and friends) -- This is the adaptive MCMC described above.
-An alternative for the proposal is provided by TProposeGibbsStep.h (the
-Gibbs step is not adaptive).
+- TSimpleMCMC.H (and friends) : This is the adaptive MCMC described above.
+It's the best tested class, and is my first choice when I'm looking at the
+behavior of an MCMC.  An alternative for the proposal is provided by
+TProposeGibbsStep.h (the Gibbs step is not adaptive).
 
-TSimpleHMC.H (and friends) -- This is a "pure" Hamiltonian MC.
+- TSimpleHMC.H (and friends) : This is a "pure" Hamiltonian MC.  It handles
+the relatively rare special case where you can write down the derivative of
+the likelihood, but for the right problem it converges much more quickly.
 
 TSimpleAHMC.H (and friends) -- This is an HMC implementation that uses an
 approximate version of the gradient.  The gradient is estimated based on
-the accumulated covariance of the posterior.
+the accumulated covariance of the posterior.  I avoid this because it's not
+faster than TSimpleMCMC, and doesn't seem to be as reliable.  My feeling is
+that it makes to many approximations.
 
 BadGrad.C -- This is just a toy to see how accurately the gradient needs to
 be calculated.

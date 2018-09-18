@@ -115,13 +115,13 @@ TProposeGibbsStep.h (the Gibbs step is not adaptive).
 the relatively rare special case where you can write down the derivative of
 the likelihood, but for the right problem it converges much more quickly.
 
-TSimpleAHMC.H (and friends) -- This is an HMC implementation that uses an
+- TSimpleAHMC.H (and friends) : This is an HMC implementation that uses an
 approximate version of the gradient.  The gradient is estimated based on
 the accumulated covariance of the posterior.  I avoid this because it's not
 faster than TSimpleMCMC, and doesn't seem to be as reliable.  My feeling is
 that it makes to many approximations.
 
-BadGrad.C -- This is just a toy to see how accurately the gradient needs to
+- BadGrad.C : This is just a toy to see how accurately the gradient needs to
 be calculated.
 
 # Other Tools
@@ -131,10 +131,10 @@ chains have been included.  In general, they are in the form of ROOT macros
 (i.e. .C files), and have running instructions in the comments at the top
 of the file.
 
-MakeCovariance.C -- Read a root tree containing an MCMC chain (for example,
+- MakeCovariance.C : Read a root tree containing an MCMC chain (for example,
 one produced by SimpleMCMC.C), and produce a covariance matrix for the
 posterior.  The results are saved in histograms.
 
-CholeskyChain.C -- Get the mean and covariance (as produced by
+- CholeskyChain.C : Get the mean and covariance (as produced by
 MakeCovariance.C) from a pair of histograms, and then produce a "chain"
 using Cholesky Decomposition.   

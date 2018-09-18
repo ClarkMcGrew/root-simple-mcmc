@@ -118,3 +118,14 @@ the accumulated covariance of the posterior.
 
 BadGrad.C -- This is just a toy to see how accurately the gradient needs to
 be calculated.
+
+# Other Tools
+
+A (tiny) collection of other tools to look at the results of the MCMC
+chains have been included.  In general, they are in the form of ROOT macros
+(i.e. .C files), and have running instructions in the comments at the top
+of the file.
+
+MakeCovariance.C -- Read a root tree containing an MCMC chain (for example,
+one produced by SimpleMCMC.C), and produce a covariance matrix for the
+posterior.  The results are saved in histograms.

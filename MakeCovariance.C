@@ -4,6 +4,7 @@
 
 #include <TFile.h>
 #include <TH2D.h>
+#include <TProfile.h>
 #include <TList.h>
 
 /////////////////////////////////////////////////////////////////
@@ -12,7 +13,17 @@
 //
 //  root input.root MakeCovariance.C
 //
-// The covariance is written as a 2D histogram to covariance.root.
+// The output is saved in a file named covariance.root which contains
+// histograms:
+//
+// AcceptedCovariance (TH2D) -- A 2 D histogram with the bin values
+//     representing the covariance (bin 1 is for Accepted[0]).  
+//
+// AcceptedMean (TProfile) -- A 1 D profile histogram with the bin values
+//     representing the means (bin 1 is Accepted[0]).  The errors on the
+//     profile points are the marginalized spread for each parameter
+//     (calculated using the TProfile "spread" option).
+//
 /////////////////////////////////////////////////////////////////
 void MakeCovariance() {
     // Find the tree in the file.
@@ -27,7 +38,6 @@ void MakeCovariance() {
     
     // Get the tree out of the file.
     TTree *inputTree = (TTree*) gFile->Get(name.c_str());
-    std::cout << "Input Tree: " << inputTree << std::endl;
     std::cout << "Input Tree Name: " << inputTree->GetName() << std::endl;
     int entries = inputTree->GetEntries();
     std::cout << "Entries: " << entries << std::endl;\
@@ -42,15 +52,19 @@ void MakeCovariance() {
     // Create an output histogram for the covariance.
     TFile output("covariance.root","recreate");
     TH2* covariance = new TH2D("AcceptedCovariance",
-                               "Covariance of Accepted Points",
+                               "Covariance of the Accepted Points",
                                dim, 0, dim,
                                dim, 0, dim);
-
+    TProfile* mean = new TProfile("AcceptedMean",
+                                  "Mean value of the Accepted Points",
+                                  dim, 0, dim,"S");
+    
     // Calculate the average and covariance.
     std::vector<double> avg(dim);
     for(int e=0; e<entries; ++e) {
         inputTree->GetEntry(e);
         for (int i = 0; i<accepted->size(); ++i) {
+            mean->Fill(i+0.1,accepted->at(i));
             avg[i] += accepted->at(i);
             for (int j = 0; j<accepted->size(); ++j) {
                 covariance->Fill(i+0.1,j+0.1,
@@ -70,5 +84,6 @@ void MakeCovariance() {
 
     // Save it to a file.
     covariance->Write();
+    mean->Write();
     output.Close();
 }

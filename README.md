@@ -129,3 +129,7 @@ of the file.
 MakeCovariance.C -- Read a root tree containing an MCMC chain (for example,
 one produced by SimpleMCMC.C), and produce a covariance matrix for the
 posterior.  The results are saved in histograms.
+
+CholeskyChain.C -- Get the mean and covariance (as produced by
+MakeCovariance.C) from a pair of histograms, and then produce a "chain"
+using Cholesky Decomposition.   

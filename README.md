@@ -152,10 +152,11 @@ using Cholesky Decomposition.
 
 # Installation
 
-The file TSimpleMCMC.H is defines an include-file-only templated class, and
+The file TSimpleMCMC.H defines an include-file-only templated class, and
 can be installed into a project by simply copying it to wherever your
 include files are stored.  ROOT is required.  It provides the needed
-libraries and include files using the 'root-config' command.  The include
-files can be found using 'root-config --cflags', and the libraries can be
-found using 'root-config --libs'
+libraries and include files using the ```root-config``` command.  The include
+files can be found using ```root-config --cflags```, and the libraries can be
+found using ```root-config --libs```
+
 

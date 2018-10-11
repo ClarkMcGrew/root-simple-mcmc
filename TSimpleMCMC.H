@@ -28,10 +28,10 @@ typedef std::vector<Parameter> Vector;
 
 class TProposeAdaptiveStep;
 
-/// A templated class to run an MCMC.  The resulting MCMC normally uses the
-/// Metropolis-Hastings algorithm with an adaptive proposal function.  The
-/// UserLikelihood template argument must be a class (or struct) which
-/// provides a method declared as:
+/// A ROOT based include-file-only templated class to run an MCMC.  The
+/// resulting MCMC normally uses the Metropolis-Hastings algorithm with an
+/// adaptive proposal function.  The UserLikelihood template argument must be
+/// a class (or struct) which provides a method declared as:
 ///
 ///\code
 /// struct ExampleLogLikelihood {
@@ -56,7 +56,7 @@ class TProposeAdaptiveStep;
 ///
 /// This can be used in your root macros:
 ///
-//// \code
+/// \code
 /// class TDummyLogLikelihood {
 /// public:
 ///     double operator()(const Vector& point)  const {
@@ -106,6 +106,11 @@ class TProposeAdaptiveStep;
 /// implements an adaptive Metropolis-Hastings step.  It has several methods
 /// that can be accessed using the GetProposeStep() method.  See above for an
 /// example.
+///
+/// \note Copyright 2017 Clark McGrew (details at the end of the source file).
+/// The full distribution can be found at
+/// https://github.com/ClarkMcGrew/root-simple-mcmc
+///
 template <typename UserLikelihood,
           typename UserProposal = TProposeAdaptiveStep>
 class TSimpleMCMC {

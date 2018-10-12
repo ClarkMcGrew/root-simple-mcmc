@@ -135,6 +135,7 @@ public:
                           << fTree->GetName()
                           << std::endl;
             fTree->Branch("LogLikelihood",&fAcceptedLogLikelihood);
+            fTree->Branch("TotalSteps", &fTotalSteps);
             fTree->Branch("Accepted",&fAccepted);
             if (saveStep) {
                 MCMC_DEBUG(0) << "TSimpleMCMC: Saving the trial steps."
@@ -143,6 +144,7 @@ public:
             }
         }
         fLogLikelihoodCount = 0;
+        fTotalSteps = 0;
     }
 
     /// Get a reference to the object that will propose the step.  The
@@ -168,18 +170,18 @@ public:
     void Start(Vector start, bool save=true) {
         fProposed.resize(start.size());
         std::copy(start.begin(), start.end(), fProposed.begin());
-        
+
         fAccepted.resize(start.size());
         std::copy(start.begin(), start.end(), fAccepted.begin());
 
         fTrialStep.resize(start.size());
-        
+
         fProposedLogLikelihood = GetLogLikelihoodValue(fProposed);
         fAcceptedLogLikelihood = fProposedLogLikelihood;
 
         if (save) SaveStep();
     }
-    
+
     /// Take a step.  This returns true if a new point has been accepted, and
     /// false if we stay at the old point.  If save is true, then the points
     /// are saved to the output.
@@ -188,6 +190,8 @@ public:
             MCMC_ERROR << "Must initialize starting point" << std::endl;
             throw;
         }
+
+        ++fTotalSteps;
 
         fProposeStep(fProposed,fAccepted,fAcceptedLogLikelihood);
 
@@ -235,7 +239,7 @@ public:
 
     /// Get the most recently proposed point.
     const Vector& GetProposed() const {return fProposed;}
-    
+
 protected:
 
     /// If possible, save the step.
@@ -245,7 +249,7 @@ protected:
         ++fLogLikelihoodCount;
         return fLogLikelihood(point);
     }
-    
+
     /// A class (called as a functor) to calculate the likelhood.
     LogLikelihood fLogLikelihood;
 
@@ -255,16 +259,20 @@ protected:
     /// A TTree to save the accepted points.
     TTree* fTree;
 
+    // The total number of steps that have been tried for any reason.  This
+    // includes both successes and failures.
+    int fTotalSteps;
+
     /// The number of times the likelihood has been calculated.
     int fLogLikelihoodCount;
-    
+
     /// The last accepted point.  This will be the same as the proposed point
     /// if the last step was accepted.
     Vector fAccepted;
 
     /// The likelihood at the last accepted pont.
     double fAcceptedLogLikelihood;
-    
+
     /// The trial step.  The difference between the previous point and the new
     /// proposed point.
     Vector fTrialStep;
@@ -284,12 +292,12 @@ protected:
 // taken relative to the current and the value is ignored.
 struct TProposeSimpleStep {
     TProposeSimpleStep(): fSigma(-1.0) {}
-    
+
     void operator ()(Vector& proposal,
                      const Vector& current,
                      const double value) const {
         double sigma = fSigma;
-        
+
         // No width was provided, so make a bogus guess at a reasonable width;
         if (sigma < 0.0) sigma = std::sqrt(1.0/proposal.size());
 
@@ -337,7 +345,7 @@ public:
         UpdateState(current,value);
 
         std::copy(current.begin(), current.end(), proposal.begin());
-        
+
         // Make the proposal.
         for (std::size_t i = 0; i < proposal.size(); ++i) {
             if (fProposalType[i].type == 1) {
@@ -357,7 +365,7 @@ public:
     }
 
     const Vector& GetEstimatedCenter() const {return fCentralPoint;}
-    
+
     /// Set the number of dimensions in the proposal.  This must match the
     /// dimensionality of the likelihood being use.
     void SetDim(int dim) {
@@ -406,12 +414,12 @@ public:
         fProposalType[dim].type = 0;
         fProposalType[dim].param1 = sigma*sigma;
     }
-    
+
     /// Set the window over which to estimate the covariance.  This can
     /// normally be very large (and there is a reasonable default), but it
     /// might need to be smaller for some pathelogical distributions.
     void SetCovarianceWindow(int w) {fCovarianceWindow = w;}
-    
+
     /// The proposal steps are chosen based on an estimate of the covariance
     /// of the posterior.  This method forces the covariance of the proposal
     /// to be updated.  It's automatically called during the run, so (while it
@@ -443,17 +451,17 @@ public:
             if (i%6 == 5) MCMC_DEBUG(1) << std::endl << "           ";
         }
         MCMC_DEBUG(1) << std::endl;
-        
+
         // The proposal is being updated, so deweight the current covariance
         // so that the new information weighs more.
         fCovarianceTrials = std::max(1000.0,0.1*fCovarianceTrials);
         fCovarianceTrials = std::min(fCovarianceTrials,0.1*fCovarianceWindow);
-        
-        // The proposal is being updated, so deweight the current acceptance 
+
+        // The proposal is being updated, so deweight the current acceptance
         // so that the new information weighs more.
         fAcceptanceTrials = std::max(1000.0,0.1*fAcceptanceTrials);
         fAcceptanceTrials = std::min(fAcceptanceTrials,0.1*fAcceptanceWindow);
-        
+
         TDecompChol chol(fCurrentCov);
         if (chol.Decompose()) {
             fDecomposition = chol.GetU();
@@ -561,10 +569,10 @@ public:
                     && fProposalType[i].type == 0
                     && fProposalType[i].param1 > 0) {
                     MCMC_DEBUG(0) << "Overriding covariance for dimension "
-                                  << i 
+                                  << i
                                   << " from "
                                   << fCurrentCov(i,i)
-                                  << " to " 
+                                  << " to "
                                   << fProposalType[i].param1
                                   << std::endl;
                     fCurrentCov(i,i) = fProposalType[i].param1;
@@ -591,7 +599,7 @@ public:
         // This makes sure everything is set properly.
         UpdateProposal();
     }
-    
+
 private:
 
     // Return to a default state.
@@ -615,7 +623,7 @@ private:
         // Reset the proposal covariance as part of the initialization.
         ResetProposal();
     }
-    
+
     /// This updates the current state.  The new proposals are adjusted based
     /// on the past history of success (or failure).  This helps make the
     /// chain more efficient at exploring the posterior.
@@ -630,8 +638,8 @@ private:
 
         // Track the total number of successes.
         if (accepted) ++fSuccesses;
-        
-        // Update the acceptance over the last "fAcceptanceWindow" trials.  
+
+        // Update the acceptance over the last "fAcceptanceWindow" trials.
         fAcceptance *= fAcceptanceTrials;
         if (accepted) fAcceptance = fAcceptance+1.0;
         fAcceptance /= fAcceptanceTrials + 1.0;
@@ -645,7 +653,7 @@ private:
         // to control how quickly the fSigma value will be changed.w
         fSigma *= std::pow(fAcceptance/fTargetAcceptance,
                            std::min(0.001,0.5/fAcceptanceWindow));
-        
+
         // Update the estimate of the central value.  This is simply a running
         // average of the position of the points in the posterior.
         for (std::size_t i=0; i< current.size(); ++i) {
@@ -672,19 +680,19 @@ private:
         }
         fCovarianceTrials = std::min(fCovarianceWindow,
                                      fCovarianceTrials+1.0);
-        
+
         // Periodically change how the proposal is updated based on the
         // current estimate of the covariance.
         if (accepted && (--fNextUpdate)<1) {
             fNextUpdate= fAcceptanceWindow + 0.5*fSuccesses;
             UpdateProposal();
         }
-        
+
         // Save the last value and point.
         fLastValue = value;
         std::copy(current.begin(), current.end(), fLastPoint.begin());
     }
-    
+
     // The previous current point.  This is used to (among other things) keep
     // track of when the state has changed.
     Vector fLastPoint;
@@ -698,14 +706,14 @@ private:
     // The trials being used for the current estimated central value.  This
     // will be a value between one and fCovarianceWindow.
     double fCentralPointTrials;
-    
+
     // The current (running) estimate of the covariance.
     TMatrixD fCurrentCov;
 
     // The trials being used for the current estimated covariance.  This
     // will be a value between one and fCovarianceWindow.
     double fCovarianceTrials;
-    
+
     // The window to average the covariance and central value over.  The
     // covariance window should be several times the autocorrelation period.
     // It should usually be very large so that all to points used to probe the
@@ -718,7 +726,7 @@ private:
     // The current Cholesky decomposition of the covariance.  This is not
     // updated everytime the fCurrentCov estimate changes.
     TMatrixD fDecomposition;
-    
+
     // Record the type of proposal to use for each dimension
     struct ProposalType {
         ProposalType(): type(0), param1(0), param2(0) {}
@@ -729,29 +737,29 @@ private:
 
     // The type of distribution to draw the propsal for a dimension from.
     std::vector<ProposalType> fProposalType;
-    
+
     // The number of times a step has been proposed since the last reset.
     int fTrials;
 
     // The total number of successes since the last reset
     int fSuccesses;
-    
+
     // A counter until the next update gets done.
     int fNextUpdate;
-    
+
     // The recent acceptance rate.
     double fAcceptance;
 
     // The trials being used for the current estimated acceptance rate.  This
     // will be a value between one and fAcceptanceWindow.
     double fAcceptanceTrials;
-    
+
     // The window to average the acceptance over.
     double fAcceptanceWindow;
 
     // The target acceptance rate for the chain.
     double fTargetAcceptance;
-    
+
     // The current width of the proposal.
     double fSigma;
 

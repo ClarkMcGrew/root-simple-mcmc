@@ -20,7 +20,7 @@ void SimpleMCMC(int trials, int maxEvaluations) {
     // Initialize the likelihood (if you need to).  The dummy likelihood
     // setups a covariance to make the PDF more interesting.
     like.Init();
-    
+
     // Set the number of dimensions for the proposal.
     mcmc.GetProposeStep().SetDim(like.GetDim());
 
@@ -50,7 +50,11 @@ void SimpleMCMC(int trials, int maxEvaluations) {
     for (int i=0; i<trials; ++i) mcmc.Step();
     std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"
               << std::endl;
-    
+
+    // Save the final state.  This is needed to force the proposal to save
+    // it's final state.
+    mcmc.SaveStep();
+
     if (tree) tree->Write();
     if (outputFile) delete outputFile;
 }

@@ -26,10 +26,15 @@ public:
         fLastValue(0.0), fTrials(0), fSuccesses(0), fAcceptanceWindow(-1),
         fAcceptance(0.0),
         fStateInitialized(false) {
-        // Set a default value for the target acceptance rate.  For sum
+        // Set a default value for the target acceptance rate.  For some
         // reason, the magic value in the literature is 44%.
         fTargetAcceptance = 0.44;
     }
+
+    bool RestoreState(TTree* tree) {return false;}
+    bool AttachState(TTree *tree) {return false;}
+    bool SaveState(bool fullSave=false) {return false;}
+    bool StateSaved() {return false;}
 
     /// Take a proposed trial point to fill, the current point, and the
     /// likelihood at the current point.
@@ -49,7 +54,7 @@ public:
 
         // Make sure we have a valid proposal
         UpdateProposal();
-        
+
         // Make the proposal.
         std::size_t i = fNextIndex.back();
         fNextIndex.pop_back();
@@ -121,7 +126,7 @@ public:
         fProposalType[dim].type = 0;
         fProposalType[dim].param1 = sigma;
     }
-    
+
     /// The proposal steps are chosen based on the next dimension to vary.
     void UpdateProposal() {
         if (!fNextIndex.empty()) return;
@@ -164,7 +169,7 @@ private:
         // Set a default window to average the acceptance over.
         fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),2.0) + 1000;
     }
-    
+
     /// This updates the current state.  The new proposals are adjusted based
     /// on the past history of success (or failure).  This helps make the
     /// chain more efficient at exploring the posterior.
@@ -179,8 +184,8 @@ private:
 
         // Track the total number of successes.
         if (accepted) ++fSuccesses;
-        
-        // Update the acceptance over the last "fAcceptanceWindow" trials.  
+
+        // Update the acceptance over the last "fAcceptanceWindow" trials.
         fAcceptance *= 1.0*std::min(fAcceptanceWindow,fTrials);
         if (accepted) fAcceptance = fAcceptance+1.0;
         fAcceptance /= 1.0*std::min(fAcceptanceWindow,fTrials) + 1.0;
@@ -189,7 +194,7 @@ private:
         fLastValue = value;
         std::copy(current.begin(), current.end(), fLastPoint.begin());
     }
-    
+
     // The previous current point.  This is used to (among other things) keep
     // track of when the state has changed.
     Vector fLastPoint;
@@ -216,7 +221,7 @@ private:
 
     // The total number of successes
     int fSuccesses;
-    
+
     // The window to average the acceptance over.
     int fAcceptanceWindow;
 
@@ -225,7 +230,7 @@ private:
 
     // The target acceptance rate for the chain.
     double fTargetAcceptance;
-    
+
     // Keep track of whether we've actually been called.
     bool fStateInitialized;
 };

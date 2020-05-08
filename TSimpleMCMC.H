@@ -82,16 +82,27 @@ class TProposeAdaptiveStep;
 ///
 ///     // The next three lines are for example only and should almost never
 ///     // be used.  This is to show the syntax for controlling
-///     // TProposeAdaptiveStep, don't just copy this blindly!
-///     mcmc.GetProposeStep().SetDim(5);          // Not needed!
-///     mcmc.GetProposeStep().SetGaussian(3,2.0); // Not recommended!
+///     // TProposeAdaptiveStep when you need to provide hints for the initial
+///     // proposal funciton.  Don't just copy this blindly!  SetDim() needs
+//      // to be used before SetGaussian and SetUniform.
+///     mcmc.GetProposeStep().SetDim(5);
+///     mcmc.GetProposeStep().SetGaussian(3,2.0); // Hint for proposal!
 ///     mcmc.GetProposeStep().SetUniform(4,-5,5); // If needed for special case.
+///
+///     // If you need provide hints about correlations between two dimensions.
+///     mcmc.GetProposeStep().SetCorrelation(3,4,0.3)
 ///
 ///     Vector point(5);
 ///     mcmc.Start(point);  // Set initial conditions
 ///
-///     for (int i=0; i<1000000; ++i) mcmc.Step(false);  // Burn-in the chain.
-///     for (int i=0; i<1000000; ++i) mcmc.Step();       // Run the chain.
+///     // Example of burn-in without saving the steps.  You probably
+///     // don't want to do this since you should study the behavior
+///     // during burn-in.
+///     for (int i=0; i<1000000; ++i) mcmc.Step(false);
+///     mcmc.GetProposeStep().UpdateProposal();
+///
+///     // Run the chain and save the points.
+///     for (int i=0; i<1000000; ++i) mcmc.Step();
 ///
 ///     tree->Write();
 ///     delete outputFile;
@@ -104,14 +115,14 @@ class TProposeAdaptiveStep;
 /// root -l -q SimpleMCMC.C+
 /// \code
 ///
-/// The macro must be compiled using ACLIC.
+/// With ROOT5, the macro must be compiled using ACLIC.
 ///
 /// The default class for UserProposal is TProposeAdaptiveStep which
 /// implements an adaptive Metropolis-Hastings step.  It has several methods
 /// that can be accessed using the GetProposeStep() method.  See above for an
 /// example.
 ///
-/// \note Copyright 2017 Clark McGrew (details at the end of the source file).
+/// \note Copyright 2017-2020 Clark McGrew (details at the end of the file).
 /// The full distribution can be found at
 /// https://github.com/ClarkMcGrew/root-simple-mcmc
 ///
@@ -149,7 +160,7 @@ public:
         }
         fLogLikelihoodCount = 0;
         fTotalSteps = 0;
-        GetProposeStep().AttachState(fTree);
+        fProposeStep.AttachState(fTree);
     }
 
     /// Get a reference to the object that will propose the step.  The
@@ -180,16 +191,91 @@ public:
         std::copy(start.begin(), start.end(), fAccepted.begin());
 
         fTrialStep.resize(start.size());
+        std::copy(start.begin(), start.end(), fTrialStep.begin());
 
         fProposedLogLikelihood = GetLogLikelihoodValue(fProposed);
         fAcceptedLogLikelihood = fProposedLogLikelihood;
 
+        fProposeStep.InitializeState(fAccepted,fAcceptedLogLikelihood);
+
         if (save) SaveStep(false);
+    }
+
+    /// Restore the state from a previous chain.  If randomize is true, then
+    /// this will find a random position in the existing tree to start from.
+    /// Set "randomize" to true with care, and only if you understand the
+    /// danger!!!
+    void Restore(TTree* tree, bool randomize = false) {
+        // A place to get total number of steps that have been tried for any
+        // reason.  This includes both successes and failures.
+        int getTotalSteps;
+
+        /// A place to get the last accepted point.  This will be the same as
+        /// the proposed point if the last step was accepted.
+        Vector getAccepted;
+        Vector* addrAccepted = &getAccepted;
+
+        /// A place to get the likelihood at the last accepted pont.
+        double getAcceptedLogLikelihood;
+
+        MCMC_DEBUG(0) << "Restore the state" << std::endl;
+
+        tree->SetBranchAddress("LogLikelihood",&getAcceptedLogLikelihood);
+        tree->SetBranchAddress("TotalSteps", &getTotalSteps);
+        tree->SetBranchAddress("Accepted",&addrAccepted);
+
+        fTotalSteps = -1;
+        fAcceptedLogLikelihood = 0;
+        int elem = tree->GetEntries();
+        while (elem > 1) {
+            -- elem;
+            tree->GetEntry(elem);
+            if (fTotalSteps > 0) {
+                double newP = std::exp(getAcceptedLogLikelihood);
+                double oldP = std::exp(fAcceptedLogLikelihood);
+                double r = gRandom->Uniform();
+                // Reject the new point based on the ratio of probability with
+                // respect to the last accepted point.
+                if (newP < (newP+oldP)*r) continue;
+            }
+
+            fTotalSteps = getTotalSteps;
+            fAcceptedLogLikelihood = getAcceptedLogLikelihood;
+            fAccepted.resize(getAccepted.size());
+            std::copy(getAccepted.begin(), getAccepted.end(),
+                      fAccepted.begin());
+            fProposed.resize(getAccepted.size());
+            std::copy(getAccepted.begin(), getAccepted.end(),
+                      fProposed.begin());
+            fTrialStep.resize(getAccepted.size());
+            std::copy(getAccepted.begin(), getAccepted.end(),
+                      fTrialStep.begin());
+            if (!randomize) break;
+        }
+
+        fProposedLogLikelihood = GetLogLikelihoodValue(fProposed);
+        double delta = fProposedLogLikelihood - fAcceptedLogLikelihood;
+        if (std::abs(delta) > 1E-4) {
+            MCMC_ERROR << "Calculated likelihood doesn't match saved likelihood"
+                       << std::endl;
+            MCMC_ERROR << "Saved:      " << fAcceptedLogLikelihood
+                       << std::endl;
+            MCMC_ERROR << "Calculated: " << fProposedLogLikelihood
+                       << std::endl;
+            fAcceptedLogLikelihood = fProposedLogLikelihood;
+        }
+
+        tree->SetBranchAddress("LogLikelihood",NULL);
+        tree->SetBranchAddress("TotalSteps", NULL);
+        tree->SetBranchAddress("Accepted",NULL);
+
+        fProposeStep.RestoreState(fAccepted,fAcceptedLogLikelihood,tree);
     }
 
     /// Take a step.  This returns true if a new point has been accepted, and
     /// false if we stay at the old point.  If save is true, then the points
-    /// are saved to the output.
+    /// are saved to the output.  The "save" can be set to false to save space
+    /// but almost never should.
     bool Step(bool save=true) {
         if (fProposed.empty() || fAccepted.empty()) {
             MCMC_ERROR << "Must initialize starting point" << std::endl;
@@ -252,9 +338,9 @@ public:
     /// the user, or directly by TSimpleMCMC.  TSimpleMCMC always uses
     /// SaveStep(false), and users should use SaveStep().
     void SaveStep(bool forceSave=true) {
-        GetProposeStep().SaveState(forceSave);
+        fProposeStep.SaveState(forceSave);
         if (fTree) fTree->Fill();
-        GetProposeStep().StateSaved();
+        fProposeStep.StateSaved();
     }
 
 protected:
@@ -322,6 +408,14 @@ struct TProposeSimpleStep {
     }
 
     double fSigma;
+
+    void InitializeState(const Vector& current, const double value) {}
+    bool RestoreState(const Vector& current, const double value,
+                      TTree* tree) {return false;}
+    bool AttachState(TTree* tree) {return false;}
+    bool SaveState(bool force) {return false;}
+    bool StateSaved() {return false;}
+
 };
 
 /// A default for the class to propose the next step.  This implements an
@@ -331,8 +425,9 @@ struct TProposeSimpleStep {
 /// estimated covariance is updated using the current state of the Markov
 /// chain. (Notice that this means it's not really a Markov Chain!  You need
 /// to check the ergodcity, but it's almost always OK.)  It works OK as long
-/// as the posterior is more or less Gaussian.  If the posterior is not
-/// Gaussian, then this probably won't fail, but it can become less efficient.
+/// as the posterior is not to badly behaved (e.g. more or less Gaussian).  If
+/// the posterior is not Gaussian, then this probably won't fail, but it can
+/// become much less efficient.
 class TProposeAdaptiveStep {
 public:
     TProposeAdaptiveStep() :
@@ -414,7 +509,8 @@ public:
     /// Set the proposal function for a particular dimension to be Gaussian.
     /// This is the default, so it's only needed if you need to give a hint
     /// about the width of the proposal (for instance the dimension is very
-    /// wide, or very narrow).
+    /// wide, or very narrow).  If you don't provide this, then the initial
+    /// step starts out with a unit variance (i.e. sigma = 1.0)
     void SetGaussian(int dim, double sigma) {
         if (dim < 0 || (std::size_t) dim >= fProposalType.size()) {
             MCMC_ERROR << "Dimension " << dim << " is out of range."
@@ -427,6 +523,36 @@ public:
                       << std::endl;
         fProposalType[dim].type = 0;
         fProposalType[dim].param1 = sigma*sigma;
+    }
+
+    /// Set the correlation between two dimensions of the proposal function.
+    /// The initial proposal function assumes that all of the dimensions are
+    /// uncorrelated.  The optimal proposal will be the same as the posterior
+    /// (which you don't know), but if you know something about the
+    /// correlations of the posterior, you can provide hints using this
+    /// method.  The provided value is the correlation coefficient between the
+    /// two dimensions.
+    void SetCorrelation(int dim1, int dim2, double correlation) {
+        if (dim1 == dim2) {
+            MCMC_ERROR << " Dimensions must be different for correlations"
+                       << " (" << dim1 << "," << dim2 << ") = "
+                       << correlation
+                       << std::endl;
+            return;
+        }
+        if (correlation < -0.99) {
+            MCMC_ERROR << "Correlation is out of valid range: "
+                       << correlation
+                       << std::endl;
+            correlation = -0.99;
+        }
+        if (correlation > 0.99) {
+            MCMC_ERROR << "Correlation is out of valid range: "
+                       << correlation
+                       << std::endl;
+            correlation = 0.99;
+        }
+        fCorrelations.push_back(CorrelationRecord(dim1,dim2,correlation));
     }
 
     /// Set the window over which to estimate the covariance.  This can
@@ -446,7 +572,7 @@ public:
                       << std::endl;
 
         MCMC_DEBUG(1) << " Covariance estimated with window of"
-                      << " " << fCovarianceTrials
+                      << " " << int(fCovarianceTrials)
                       << std::endl;
         if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 5) {
             fCurrentCov.Print();
@@ -485,6 +611,8 @@ public:
             }
         }
 
+        // Decompose the current covariance and use it for the proposal.  If
+        // this successes, then UpdateProposal() is done.
         TDecompChol chol(fCurrentCov);
         if (chol.Decompose()) {
             fDecomposition = chol.GetU();
@@ -600,14 +728,40 @@ public:
                                   << std::endl;
                     fCurrentCov(i,i) = fProposalType[i].param1;
                 }
+                else if (i == j && fProposalType[i].type == 1) {
+                    MCMC_DEBUG(0) << "Overriding covariance for "
+                                  << i
+                                  << " to uniform "
+                                  << std::endl;
+                    double delta = fProposalType[i].param1;
+                    delta -= fProposalType[i].param2;
+                    fCurrentCov(i,i) = delta*delta/12.0;
+                }
                 else if (i == j) {
                     fCurrentCov(i,i) = 1.0;
                 }
                 else fCurrentCov(i,j) = fCurrentCov(j,i) = 0.0;
             }
         }
+        // Apply any correlations between the dimensions.
+        for (std::vector<CorrelationRecord>::iterator c = fCorrelations.begin();
+             c != fCorrelations.end(); ++c) {
+            if (c->dim1 == c->dim2) {
+                MCMC_DEBUG(0) << "Correlations must be for different dimensions"
+                              << std::endl;
+                continue;
+            }
+            double v1 = fCurrentCov(c->dim1,c->dim1);
+            double v2 = fCurrentCov(c->dim2,c->dim2);
+            fCurrentCov(c->dim1,c->dim2)
+                = fCurrentCov(c->dim2,c->dim1)
+                = c->correlation*std::sqrt(v1)*std::sqrt(v2);
+        }
+
         // Set a default window to average the covariance over.  This
-        // basically averages over everything.
+        // basically averages over everything.  It shouldn't be infinite since
+        // the way the covariance is calculated startes to run into round-off
+        // errors if the is overly large.
         int minWindow = 1000;
         if (fCovarianceWindow < minWindow) fCovarianceWindow = 10000000;
         // After reseting, erase the acceptance history.
@@ -625,8 +779,104 @@ public:
 
     /// Restore the proposal state so that an existing chain can be continued.
     /// The tree parameter provides a pointer to a tree that was generated by
-    /// a previous run of TSimpleMCMC.
-    bool RestoreState(TTree* tree) {return false;}
+    /// a previous run of TSimpleMCMC.  This attaches to the tree, gets the
+    /// required values, and then detaches (by setting the branch address to
+    /// NULL).
+    bool RestoreState(const Vector& current, const double value,
+                      TTree* tree) {
+        fStateInitialized = true;
+
+        if (fLastPoint.size() < 1) {
+            SetDim(current.size());
+        }
+        else if (fLastPoint.size() != current.size()) {
+            // Sanity check! These must be equal.
+            MCMC_ERROR << "Mismatch in the dimensionality."
+                       << std::endl;
+        }
+        fLastValue = value;
+        std::copy(current.begin(), current.end(), fLastPoint.begin());
+
+        if (!tree) return false;
+        tree->SetBranchAddress("AdaptiveTrials",&fSaveTrials);
+        tree->SetBranchAddress("AdaptiveSuccesses",&fSaveSuccesses);
+        tree->SetBranchAddress("AdaptiveNextUpdate",&fSaveNextUpdate);
+        tree->SetBranchAddress("AdaptiveAcceptance",&fSaveAcceptance);
+        tree->SetBranchAddress("AdaptiveAcceptanceTrials",
+                               &fSaveAcceptanceTrials);
+        tree->SetBranchAddress("AdaptiveSigma",&fSaveSigma);
+        Vector* addrSaveCentralPoint = &fSaveCentralPoint;
+        tree->SetBranchAddress("AdaptiveCentralPoint",&addrSaveCentralPoint);
+        tree->SetBranchAddress("AdaptiveCentralPointTrials",
+                               &fSaveCentralPointTrials);
+        Vector* addrSaveCovariance = &fSaveCovariance;
+        tree->SetBranchAddress("AdaptiveCovariance",&addrSaveCovariance);
+        tree->SetBranchAddress("AdaptiveCovarianceTrials",
+                               &fSaveCovarianceTrials);
+
+        // The state should be saved in the last entry in the tree.  If it's
+        // not there, then this will look backwards until it finds the state,
+        // or runs out of tree.  If the last entry does not contain the state,
+        // this will produce lots of warnings!!!!
+        int entries = tree->GetEntries();
+        int elem = entries;
+        int dim = fLastPoint.size();
+        std::size_t covSize = dim*(dim+1)/2;
+        while (elem > 1) {
+            --elem;
+            tree->GetEntry(elem);
+            if (fSaveCovariance.size() != covSize) {
+                MCMC_DEBUG(0) << "Covariance not found at entry " << elem
+                              << "/" << entries
+                              << std::endl;
+                continue;
+            }
+            break;
+        }
+
+        fTrials = fSaveTrials;
+        fSuccesses = fSaveSuccesses;
+        fNextUpdate = fSaveNextUpdate;
+        fAcceptance = fSaveAcceptance;
+        fAcceptanceTrials = fSaveAcceptanceTrials;
+        fSigma = fSaveSigma;
+        fCentralPoint = fSaveCentralPoint;
+        fCentralPointTrials = fSaveCentralPointTrials;
+
+        // The covariance was saved in a vector, so it has to be unpacked.
+        // This must match the code in SaveState().
+        Vector::const_iterator cov = fSaveCovariance.begin();
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            for (std::size_t j=0; j<i+1; ++j) {
+                if (cov == fSaveCovariance.end()) {
+                    MCMC_ERROR << "Past the end of the covariance"
+                               << std::endl;
+                    throw;
+                }
+                if (i == j) fCurrentCov(i,i) = *cov;
+                else fCurrentCov(i,j) = fCurrentCov(j,i) = *cov;
+                ++cov;
+            }
+        }
+        fCovarianceTrials = fSaveCovarianceTrials;
+
+        // Reset the branch addresses.
+        tree->SetBranchAddress("AdaptiveTrials",NULL);
+        tree->SetBranchAddress("AdaptiveSuccesses",NULL);
+        tree->SetBranchAddress("AdaptiveNextUpdate",NULL);
+        tree->SetBranchAddress("AdaptiveAcceptance",NULL);
+        tree->SetBranchAddress("AdaptiveAcceptanceTrials",NULL);
+        tree->SetBranchAddress("AdaptiveSigma",NULL);
+        tree->SetBranchAddress("AdaptiveCentralPoint",NULL);
+        tree->SetBranchAddress("AdaptiveCentralPointTrials",NULL);
+        tree->SetBranchAddress("AdaptiveCovariance",NULL);
+        tree->SetBranchAddress("AdaptiveCovarianceTrials",NULL);
+
+        // Now update the proposal.
+        UpdateProposal();
+
+        return true;
+    }
 
     /// This attaches any branches needed to save the state to the output
     /// tree.
@@ -677,8 +927,6 @@ public:
         return false;
     }
 
-private:
-
     // Return to a default state.
     void InitializeState(const Vector& current, const double value) {
         if (fStateInitialized) return;
@@ -700,6 +948,8 @@ private:
         // Reset the proposal covariance as part of the initialization.
         ResetProposal();
     }
+
+private:
 
     /// This updates the current state.  The new proposals are adjusted based
     /// on the past history of success (or failure).  This helps make the
@@ -819,13 +1069,25 @@ private:
     // Record the type of proposal to use for each dimension
     struct ProposalType {
         ProposalType(): type(0), param1(0), param2(0) {}
-        int type; // 0 for Gaussian, 1 for Uniform.
+        int type;      // 0 for Gaussian, 1 for Uniform.
         double param1; // Sigma for Gaussian, Minimum for Uniform
         double param2; // Not used for Gaussian, Maximum for Uniform
     };
 
-    // The type of distribution to draw the propsal for a dimension from.
+    // The type of distribution to draw the proposal for a dimension from.
     std::vector<ProposalType> fProposalType;
+
+    // A record to record the correlations.
+    struct CorrelationRecord {
+        CorrelationRecord(int d1,int d2, double c)
+            : dim1(d1), dim2(d2), correlation(c) {}
+        int dim1;
+        int dim2;
+        double correlation; // The correlation coefficient between d1, and d2.
+    };
+
+    // The correlations that have been set.
+    std::vector<CorrelationRecord> fCorrelations;
 
     // The number of times a step has been proposed since the last reset.
     int fTrials;
@@ -864,7 +1126,7 @@ private:
 
 // MIT License
 
-// Copyright (c) 2017 Clark McGrew
+// Copyright (c) 2017-2020 Clark McGrew
 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal

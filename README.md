@@ -10,7 +10,7 @@ consider it to be stable, and am using it in "production" code.
 The TSimpleMCMC templated class runs an Markov Chain Monte Carlo using a
 user provided likelihood and stepping proposal.  The resulting MCMC
 normally uses default stepping proposal which implements an adaptive
-proposal function.  
+proposal function.
 
 The MCMC object is created with one required and one optional template argument.
 
@@ -18,8 +18,8 @@ The MCMC object is created with one required and one optional template argument.
 typedef TSimpleMCMC<UserLikelihood> TUserMCMC;
 ```
 
-or 
-	
+or
+
 ```
 typedef TSimpleMCMC<UserLikelihood,UserProposal> TUserMCMC;
 ```
@@ -71,18 +71,28 @@ void SimpleMCMC() {
     TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
 
     // The next three lines are for example only and should almost never
-    // be used.  They are documented in the TProposeAdaptiveStep header file.  
-    // This is to show the syntax for controlling TProposeAdaptiveStep, don't 
+    // be used.  They are documented in the TProposeAdaptiveStep header file.
+    // This is to show the syntax for controlling TProposeAdaptiveStep, don't
     // just copy this blindly!
-    mcmc.GetProposeStep().SetDim(5);          // Not needed!
-    mcmc.GetProposeStep().SetGaussian(3,2.0); // Not recommended!
+    mcmc.GetProposeStep().SetDim(5);          // Not bad for documentation!
+    mcmc.GetProposeStep().SetGaussian(3,2.0); // Otherwise, sigma == 1
     mcmc.GetProposeStep().SetUniform(4,-5,5); // Maybe for a special case.
+    mcmc.GetProposeStep().SetCorrelation(1,2,0.5)  // Set Correlation Coeff.
+    mcmc.GetProposeStep().SetCorrelation(2,3,-0.7) // Set Correlation Coeff.
 
     Vector point(5);
     mcmc.Start(point);  // Set initial conditions
 
-    for (int i=0; i<1000000; ++i) mcmc.Step(false);  // Burn-in the chain.
+    // Invisible burn-in: This doesn't save any output and might be
+    // useful to build a proposal covariance.
+    for (int i=0; i<1000000; ++i) mcmc.Step(false);
+
+    // This is the normal way to run the steps.
     for (int i=0; i<1000000; ++i) mcmc.Step();       // Run the chain.
+
+    // Save the final state.  This is needed to force the proposal to save
+    // it's final state so that the chain can be continued.
+    mcmc.SaveStep();
 
     tree->Write();
     delete outputFile;
@@ -105,13 +115,32 @@ implements an adaptive Metropolis-Hastings step.  It has several methods
 that can be accessed using the GetProposeStep() method.  See above for an
 example.
 
+# Working Example
+
+The SimpleMCMC.C file contains a working example that I've used to
+test the code.  It can be compiled into a standalone program using
+mcmc-compile.sh and then run as mcmc.exe.  This test program takes
+three optional arguments.  The first is the number of steps to take,
+the second is the name of an output file for the chain, and the third
+is the name of a file to read the starting point.  If all three
+parameters are provided, then the input and output files represent a
+single continued MCMC chain.  An example of running this might be
+
+```bash
+./mcmc-compile.sh
+mcmc.exe 50000 mcmc1.root
+mcmc.exe 50000 mcmc2.root mcmc1.root
+mcmc.exe 50000 mcmc3.root mcmc2.root
+```
+
 # MCMC Versions Here
 
-This repo actually contains a few different MCMC examples that I have used
-to learn about the different types of behaviors.  None of these examples is
-intended as an end user program, and I control a lot of the input
-parameters by editing the source and recompiling (hey, it's test code).
-However, the associated TSimple<blah>.H classes are fairly well tested.
+This repo actually contains a few different MCMC examples that I have
+used to learn about the different types of behaviors.  Except for the
+TSimpleMCMC.H classess, these examples are not intended as an end user
+program, and I control a lot of the input parameters by editing the
+source and recompiling (hey, it's test code).  However, the associated
+TSimple<blah>.H classes generally work.
 
 - TSimpleMCMC.H (and friends) : This is the adaptive MCMC described above.
 It's the best tested class, and is my first choice when I'm looking at the
@@ -131,7 +160,6 @@ faster than TSimpleMCMC, and doesn't seem to be as reliable.  My feeling is
 that it makes to many approximations.  It is less supported that
 TSimpleMCMC and is mostly for (my own) education.
 
-
 - BadGrad.C : This is just a toy to see how accurately the gradient needs to
 be calculated.
 
@@ -148,7 +176,7 @@ posterior.  The results are saved in histograms.
 
 - CholeskyChain.C : Get the mean and covariance (as produced by
 MakeCovariance.C) from a pair of histograms, and then produce a "chain"
-using Cholesky Decomposition.   
+using Cholesky Decomposition.
 
 # Installation
 
@@ -158,5 +186,3 @@ include files are stored.  ROOT is required.  It provides the needed
 libraries and include files using the ```root-config``` command.  The include
 files can be found using ```root-config --cflags```, and the libraries can be
 found using ```root-config --libs```
-
-

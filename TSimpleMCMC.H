@@ -113,7 +113,7 @@ class TProposeAdaptiveStep;
 ///
 /// \code
 /// root -l -q SimpleMCMC.C+
-/// \code
+/// \endcode
 ///
 /// With ROOT5, the macro must be compiled using ACLIC.
 ///
@@ -121,6 +121,15 @@ class TProposeAdaptiveStep;
 /// implements an adaptive Metropolis-Hastings step.  It has several methods
 /// that can be accessed using the GetProposeStep() method.  See above for an
 /// example.
+///
+/// WARNING: This uses the random number generator provided by gRandom.  By
+/// default that's "TRandom3", which is a good generator, but it is started
+/// with a fixed value for the seed.  It is an extremely good idea to reset
+/// the generator by adding
+///
+/// \code
+/// gRandom = new TRandom3(0); // use the UUID to make a seed.
+/// \endcode
 ///
 /// \note Copyright 2017-2020 Clark McGrew (details at the end of the file).
 /// The full distribution can be found at

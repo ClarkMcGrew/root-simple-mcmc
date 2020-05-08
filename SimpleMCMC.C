@@ -26,6 +26,10 @@ void SimpleMCMC(int trials,
     tree->SetDirectory(outputFile);
 #endif
 
+    // Initialize the random number generator.  This makes sure that a
+    // different sequence is used everytime the code is run.
+    gRandom = new TRandom3(0);
+
     // Create the MCMC object and get the likelihood.
     TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();

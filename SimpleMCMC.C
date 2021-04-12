@@ -1,8 +1,10 @@
 #include "TSimpleMCMC.H"
+#include "TDummyLogLikelihood.H"
+
+#include <TRandom3.h>
 
 #include <sstream>
 
-#include "TDummyLogLikelihood.H"
 
 void SimpleMCMC(int trials,
                 const char* outputName,

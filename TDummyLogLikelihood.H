@@ -10,7 +10,7 @@ public:
 
     // Calculate the log(likelihood).  The dummy likelihood is a Gaussian
     // (with covariance) centered at zero.  The covariance is set in Init()
-    // (below).  
+    // (below).
     double operator()(const Vector& point)  const {
         double logLikelihood = 0.0;
 
@@ -23,11 +23,11 @@ public:
         return logLikelihood;
     }
 
-    // Note that this needs to be the grad(log(Likelihood)).  
+    // Note that this needs to be the grad(log(Likelihood)).
     bool operator() (Vector& g, const Vector& p) {
-        for (int i=0; i<p.size(); ++i) {
+        for (std::size_t i=0; i<p.size(); ++i) {
             g[i] = 0.0;
-            for (int j=0; j<p.size(); ++j) {
+            for (std::size_t j=0; j<p.size(); ++j) {
                 g[i] -= Error(i,j)*p[j];
             }
         }
@@ -57,8 +57,8 @@ public:
 #define SET_CORRELATION
                 Covariance(i,j) = gRandom->Uniform(-0.999,0.999)*sig1*sig2;
 #endif
-                
-                // Choose a correlation based on the variables.  Neighbors are 
+
+                // Choose a correlation based on the variables.  Neighbors are
                 // not correlated, but there is more correlation as the
                 // variables are further apart.
 
@@ -69,7 +69,7 @@ public:
                     Covariance(i,j) = 0.900*sig1*sig2*(j - i)/(GetDim()-1.0);
                 }
 #endif
-                
+
                 // Choose no correlation
 #ifndef SET_CORRELATION
                 Covariance(i,j) = 0.0;
@@ -101,7 +101,7 @@ public:
         Error = Covariance;
         Error.Invert();
     }
-    
+
     static TMatrixD Covariance;
     static TMatrixD Error;
 };

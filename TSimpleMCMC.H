@@ -302,9 +302,24 @@ public:
             }
         }
 
-        // Find the likelihood at the new step.  The old likelihood has been
-        // cached.
+        // Find the log likelihood at the new step.  The old likelihood has
+        // been cached.
         fProposedLogLikelihood = GetLogLikelihoodValue(fProposed);
+
+        // Extremely negative log likelihoods are treated as being zero. In
+        // practice, zero probability is flagged by a non finite value
+        // (e.g. inf, -inf, or nan), or by a log likelihood of less than
+        // -1E+30.  That's a probability of less than 10**(-4E+29).
+        if (!std::isfinite(fProposedLogLikelihood)) {
+            if (save) SaveStep(false);
+            return false;
+        }
+        if (fProposedLogLikelihood < -0.999999E+30) {
+            if (save) SaveStep(false);
+            return false;
+        }
+
+        // Decide if the proposed step should be taken.
         double delta = fProposedLogLikelihood - fAcceptedLogLikelihood;
         if (delta < 0.0 ) {
             // The proposed likelihood is less than the previously accepted

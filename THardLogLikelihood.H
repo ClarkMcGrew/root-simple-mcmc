@@ -25,6 +25,13 @@
 // (1,1,...,1), and other local minima at other points [like x =
 // (-1,1,1,...,1)].  There may be multiple global minima.
 //
+// COMMENT: The Rosenbrock function is a good example of one of the
+// idiosyncracies of Bayesian analysis vs parameter optimization.  At high
+// dimensionaities, there is a global best fit point at (1,1,...1,1,1) and the
+// probability dropping rapidly toward (1,1,...,1,1,0).  Surprisingly, when
+// you marginalize to find the most probable value of the last variable,
+// because of the behavior away from best fit, the most probable marginalized
+// value is very close to zero (NOT ONE, WHICH IS THE MOST PROBABLE POINT).
 class THardLogLikelihood {
 public:
     // Determine the number of dimensions.  This is where the dimensions are

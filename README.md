@@ -14,7 +14,8 @@ user provided likelihood and stepping proposal.  The resulting MCMC
 normally uses default stepping proposal which implements an adaptive
 proposal function.
 
-The MCMC object is created with one required and one optional template argument.
+The MCMC object is created with one required and one optional template
+argument.
 
 ```
 typedef TSimpleMCMC<UserLikelihood> TUserMCMC;
@@ -107,9 +108,9 @@ If this macro is in a file named "SimpleMCMC.C", then you can run it using
 root -l -q SimpleMCMC.C+
 ```
 
-Running it inside of ROOT requires that the macro be compiled so that it
-uses "real" C++.  That means that in ROOT5, you must use ACLIC.  In ROOT 6,
-the cling jit compilation is probably sufficient (it is still safer to
+Running it inside of ROOT requires that the macro be compiled so that
+it uses "real" C++.  That means that in ROOT5, you must use ACLIC.  In
+ROOT 6, the cling jit compilation is sufficient (it is still safer to
 compile it first using the "+" suffix).
 
 The default class for UserProposal is TProposeAdaptiveStep which
@@ -178,6 +179,22 @@ posterior.  The results are saved in histograms.
 - CholeskyChain.C : Get the mean and covariance (as produced by
 MakeCovariance.C) from a pair of histograms, and then produce a "chain"
 using Cholesky Decomposition.
+
+- TDummyLogLikelihood.H : Implement a multidimensional "Gaussian" test
+likelihood with correlations between the parameters.  Using
+preprocessor definitions, this can be a nice easy function, or you can
+set it to have various pathelogical correlations.
+
+- THardLogLikelihood.H : Implement a multidimensional "Rosenbrock"
+test likelihood.  This is pretty pathelogical and has all sorts of
+non-covariant correlations between parameters.  The Rosenbrock
+function is a good example of some the idiosyncracies of Bayesian
+analysis versus parameter optimization.  At high dimensionaities,
+there is a global optimum at (1,1,...1,1,1) and the probability drops
+rapidly toward (1,1,...,1,1,0).  Surprisingly, when you marginalize to
+find the most probable value of the last variable, because of the
+behavior away from best fit, the most probable marginalized value is
+very close to zero (NOT ONE, WHICH IS THE MOST PROBABLE POINT).
 
 # Installation
 

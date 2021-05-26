@@ -1,4 +1,4 @@
-#include "TSimpleAHMC.H"
+#include "TSimpleHMC.H"
 #include "TDummyLogLikelihood.H"
 
 #include <TMatrixD.h>
@@ -17,72 +17,87 @@ void SimpleAHMC(int trials, int maxEvals=-1) {
     TTree *tree = new TTree("SimpleAHMC","Tree of accepted pqoints");
 #endif
 
-//#define FORCE_TRUE_GRADIENT
 #ifdef FORCE_TRUE_GRADIENT
-    TSimpleAHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
+    // Using the full derivative kind of defeats the purpose of an ahmc.
+    TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
 #else
-    TSimpleAHMC<TDummyLogLikelihood> hmc(tree);
+    TSimpleHMC<TDummyLogLikelihood> hmc(tree);
 #endif
-    
+
     TDummyLogLikelihood& like = hmc.GetLogLikelihood();
-    
+
     // Initialize the likelihood (if you need to).  The dummy likelihood
     // setups a covariance to make the PDF more interesting.
     like.Init();
-    
+
     // The number of dimensions in the point needs to agree with the number of
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
     Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
-    for (std::size_t i=0; i<p.size(); ++i) p[i] = 0.0;
-    
+
     hmc.Start(p,true);
-    
-#define BURNIN
-#ifdef BURNIN
-    // Burn-in the chain
-    int burnin = p.size();
+
+    int verbose = 500;
+    // Burn-in the chain.  This is basically using a Langevin step.
+    std::cout << "Start burn-in" << std::endl;
+    int burnin = 500 + 2*p.size()*p.size();
     hmc.SetAlpha(0.8);
     hmc.SetMeanEpsilon(-0.1);
     hmc.SetLeapFrog(0);
     for (int i=0; i<burnin; ++i) {
-        for (int j=0; j<p.size(); ++j) {
-            p[j] = hmc.GetCentralPoint()[j];
-        }
-        // hmc.SetPosition(p);
-        for (int j = 0; j<2*burnin; ++j) {
-            hmc.Step(false,5);
-        }
-    }
-    // Burning the chain a bit more.
-    hmc.SetAlpha(0.0);
-    hmc.SetMeanEpsilon(0.05);
-    hmc.SetLeapFrog(-5);
-    for (int i=0; i<4*p.size()*p.size(); ++i) {
-        hmc.Step(false);
-    }
-#endif
-    
-    // Run the chain
-    hmc.SetAlpha(0.0);
-    hmc.SetMeanEpsilon(0.05);
-    hmc.SetLeapFrog(-5);
-    for (int i=0; i<trials; ++i) {
-        if (i%1000 == 0) {
-            std::cout << i << " " << hmc.GetPotentialCount()
+        if (i%verbose == 0) {
+            std::cout << "Burn-in: " << i
+                      << " Calls: " << hmc.GetPotentialCount()
+                      << " Gradients: " << hmc.GetGradientCount()
+                      << " Acceptance: " << hmc.GetAcceptanceRate()
                       << std::endl;
         }
-        hmc.Step(true);
-        if (maxEvals > 0 && hmc.GetPotentialCount() > maxEvals) break;
+        hmc.Step(false,5);
     }
-    hmc.GetEstimatedCovariance().Print();
-    
+
+    // Burning the chain a bit more.
+    std::cout << "Second burn-in" << std::endl;
+    hmc.SetAlpha(0.0);
+    hmc.SetMeanEpsilon(-0.05);
+    hmc.SetLeapFrog(5);
+    burnin = 500 + 2*p.size()*p.size();
+    for (int i=0; i<burnin; ++i) {
+        if (i%verbose == 0) {
+            std::cout << "Burn-in: " << i
+                      << " Calls: " << hmc.GetPotentialCount()
+                      << " Gradients: " << hmc.GetGradientCount()
+                      << " Acceptance: " << hmc.GetAcceptanceRate()
+                      << std::endl;
+        }
+        hmc.Step(false,2);
+    }
+
+    // Run the chain
+    std::cout << "Run chain" << std::endl;
+    hmc.SetAlpha(0.75);
+    hmc.SetMeanEpsilon(-0.05);
+    hmc.SetLeapFrog(5);
+    for (int i=0; i<trials; ++i) {
+        if (i%verbose == 0) {
+            std::cout << "Trials: " << i
+                      << " Calls: " << hmc.GetPotentialCount()
+                      << " Gradients: " << hmc.GetGradientCount()
+                      << " Acceptance: " << hmc.GetAcceptanceRate()
+                      << std::endl;
+        }
+        // Use the covariant approximation for the derivative.
+        hmc.Step(true,2);
+    }
+    // like.Covariance.Print();
+    // hmc.GetEstimatedCovariance().Print();
+
     std::cout << "Finished " << trials
               << " trials with " << hmc.GetPotentialCount()
               << " calls and " << hmc.GetGradientCount()
               << " gradients "
+              << " Accepted: " << hmc.GetAcceptanceRate()
               << std::endl;
 
     if (tree) tree->Write();

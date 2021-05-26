@@ -1,11 +1,13 @@
 # root-simple-mcmc
 
-A simple MCMC template for use with ROOT (tested with 5.34+ and 6.06+).  It
-can be used as in a macro with ACLiC, or directly in C++ code.  See
-"installation" below for how to include it in an external project.  While
-multiple classes have been provided, the *only* one that I recommend is the
-include-file-only TSimpleMCMC templated class (i.e. TSimpleMCMC.H).  I
-consider it to be stable, and am using it in "production" code.
+A simple MCMC template for use with ROOT (tested with 5.34+ and
+6.06+).  It can be used as in a macro with ACLiC, or directly in C++
+code.  See "installation" below for how to include it in an external
+project.  While multiple classes have been provided, the *only* one
+that I recommend is the include-file-only TSimpleMCMC templated class
+(i.e. TSimpleMCMC.H).  I consider it to be stable, and am using it in
+"production" code.  The TSimpleHMC class is also pretty stable, but
+required the gradient.
 
 The TSimpleMCMC templated class runs an Markov Chain Monte Carlo using a
 user provided likelihood and stepping proposal.  The resulting MCMC
@@ -137,7 +139,7 @@ mcmc.exe 50000 mcmc3.root mcmc2.root
 
 This repo actually contains a few different MCMC examples that I have
 used to learn about the different types of behaviors.  Except for the
-TSimpleMCMC.H classess, these examples are not intended as an end user
+TSimpleMCMC.H classes, these examples are probably not useful in an end user
 program, and I control a lot of the input parameters by editing the
 source and recompiling (hey, it's test code).  However, the associated
 TSimple<blah>.H classes generally work.
@@ -148,17 +150,16 @@ behavior of an MCMC.  An alternative for the proposal is provided by
 TProposeGibbsStep.h (the Gibbs step is not adaptive).  I have used this
 class in "production" environments.
 
-- TSimpleHMC.H (and friends) : This is a "pure" Hamiltonian MC.  It handles
-the relatively rare special case where you can write down the derivative of
-the likelihood, but for the right problem it converges much more quickly.
-It is less supported that TSimpleMCMC and is mostly for (my own) education.
-
-- TSimpleAHMC.H (and friends) : This is an HMC implementation that uses an
-approximate version of the gradient.  The gradient is estimated based on
-the accumulated covariance of the posterior.  I avoid this because it's not
-faster than TSimpleMCMC, and doesn't seem to be as reliable.  My feeling is
-that it makes to many approximations.  It is less supported that
-TSimpleMCMC and is mostly for (my own) education.
+- TSimpleHMC.H (and friends) : This is a "pure" Hamiltonian MC.  It
+handles the relatively rare special case where you can write down the
+derivative of the likelihood, but for the right problem it converges
+much much more quickly than a pure MCMC.  It is less supported that
+TSimpleMCMC and is mostly for (my own) education.  When the gradient
+can be efficiently calculated, this works really well for very high
+dimensional functions (e.g. ~500).  The HMC template can also
+approximate the gradient based on the current covariance of the
+posterior.  In general, my feeling is that the approximate version
+makes to many approximations and doesn't do any better than the pure MCMC.
 
 - BadGrad.C : This is just a toy to see how accurately the gradient needs to
 be calculated.
@@ -180,9 +181,10 @@ using Cholesky Decomposition.
 
 # Installation
 
-The file TSimpleMCMC.H defines an include-file-only templated class, and
-can be installed into a project by simply copying it to wherever your
-include files are stored.  ROOT is required.  It provides the needed
-libraries and include files using the ```root-config``` command.  The include
-files can be found using ```root-config --cflags```, and the libraries can be
-found using ```root-config --libs```
+The file TSimpleMCMC.H (also, TSimpleHMC.h) defines an include-file-only
+templated class, and can be installed into a project by simply copying
+it to wherever your include files are stored.  ROOT is required.  It
+provides the needed libraries and include files using the
+```root-config``` command.  The include files can be found using
+```root-config --cflags```, and the libraries can be found using
+```root-config --libs```

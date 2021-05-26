@@ -1016,7 +1016,10 @@ private:
                                        fCentralPointTrials+1.0);
 
         // Update the estimate of the covariance.  This is a running
-        // calculation of the covariance.
+        // calculation of the covariance.  This does a *VERY* approximate
+        // calculation of the covariance relative to the current idea of the
+        // central point.  It's OK to use as a guess of the next step, but
+        // that's about all.
         for (std::size_t i=0; i<current.size(); ++i) {
             for (std::size_t j=0; j<i+1; ++j) {
                 double v = fCurrentCov(i,j);

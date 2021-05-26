@@ -3,8 +3,6 @@
 
 #include <iostream>
 #include <vector>
-#include <algorithm>
-#include <limits>
 #include <cmath>
 
 #include <TRandom.h>
@@ -33,6 +31,10 @@ typedef std::vector<Parameter> Vector;
 // HMC_DEBUG(1) << "This is debug output" << std::endl;
 //
 // The message will be printed if the value is less that HMC_DEBUG_LEVEL.
+// Generically, the recommendad levels are "0" for once per run output, "1"
+// for intermittent updates, "2" for more verbose intermittent updates, "3"
+// for once per step, "4" for extra once per step verbosity, "5" for once per
+// gradient, and "6" or more for super verbosity.
 #ifndef HMC_DEBUG
 #define HMC_DEBUG(level) if (level <= (HMC_DEBUG_LEVEL)) std::cout
 #endif
@@ -70,10 +72,9 @@ namespace {
 /// negative.  Do not return the chi^2 (i.e. -2*log(likelihood).
 ///
 /// The optional UserGradient will should calculate the gradient of the user
-/// log(likelihood), and return true if the gradient is calculated.  This
-/// argument is provided for testing purposes, because if the gradient is
-/// actually available you should be using a pure HMC technique (and not
-/// HMC).  If provided, the template argument must be a class (or struct)
+/// log(likelihood), and return true if the gradient is calculated.  if this
+/// argument is available, they you should be using a pure HMC technique (and
+/// not HMC).  If provided, the template argument must be a class (or struct)
 /// which provides a method declared as:
 ///
 ///\code
@@ -81,6 +82,35 @@ namespace {
 ///    bool operator() (Vector& grad, const Vector& point);
 /// }
 ///\endcode
+///
+/// If the gradient is not available, then you can use an approximate HMC
+/// method.
+//
+/// BACKGROUND: The HMC technique is can very efficiently approximate the
+/// posterior probability using a minimum number of "leapfrog" steps (See
+/// "Chapter 5 of the Handbook of Markov Chain Monte Carlo -- MCMC Using
+/// Hamiltonian Dynamics" by Radford M. Neal, arxiv:1206.1901).
+/// Unfortunately, it's efficiency depends on the ability to calculate the
+/// gradient at multiple points along the leapfrog step, and calculating the
+/// gradient can be much more expensive than calculating the likelihood.
+/// Fortunately, the correctness of the HMC technique depends on the
+/// reversibility of the leapfrog step, and not the correctness of the
+/// gradient calculation.  That means that an approximate gradient can be used
+/// in place of the true gradient.  The cost of using an approximate gradient
+/// is that the results of the HMC will not converge to the correct posterior
+/// quite as efficiently, but the decrease in efficiency will often be
+/// compensated for by the faster calculation of the approximate gradient
+/// (relative to the true gradient).
+///
+/// The AHMC technique is based on the realization that in many cases, the
+/// prior is approximately a multidimensional Gaussian, and the resulting
+/// posterior is also approximately Gaussian.  Because of that, the gradient
+/// of the approximate covariance of the posterior is often a pretty good
+/// representation of the true posterior gradient.  The estimated posterior
+/// will require more steps to approximate the true posterior, but the
+/// increased number of steps is may be compenstated by the decreased time
+/// required to calculate the gradient, and a more efficient coverage of the
+/// posterior.
 template <typename UserParameter,
           typename OptionalGradient = SimpleHMCInvalidGradient>
 class TSimpleHMC {
@@ -95,7 +125,7 @@ public:
     TSimpleHMC(TTree* tree = NULL, bool saveStep = false)
         : fTree(tree), fStepCount(0),
           fPotentialCount(0), fPotentialGradientCount(0),
-          fLeapFrogSteps(100), fAlpha(0.0),
+          fLeapFrogSteps(10), fAlpha(0.0),
           fCovarianceWindow(1000000) {
         if (fTree) {
             HMC_DEBUG(0) << "TSimpleHMC: Adding branches to "
@@ -121,6 +151,9 @@ public:
     /// actually just a typedef for your class.
     LogLikelihood& GetLogLikelihood() {return fLogLikelihood;}
 
+    /// Get the acceptance rate
+    double GetAcceptanceRate() { return fCurrentAcceptance; }
+
     /// Get a count of the total number of calls to the Potential method.
     int GetPotentialCount() const {
         return fPotentialCount;
@@ -145,7 +178,10 @@ public:
     /// Get the current value of epsilon
     double GetMeanEpsilon() const {return fMeanEpsilon;}
 
-    /// Override the automatically calculated number of leapfrog steps.
+    /// Override the automatically calculated number of leapfrog steps.  If
+    /// this is zero, then a single approximate step is taken.  If this is
+    /// positive, it overrides the automatically calculated number of steps.
+    /// Any negative value will automatically calculate the number of steps.
     void SetLeapFrog(int i) {fLeapFrogSteps = -i;}
 
     /// Get the most recent central point.
@@ -186,6 +222,7 @@ public:
         // Set the value of the step size.  The step size will evolve based on
         // the walk through the log(likeihood).
         fMeanEpsilon = 0.05;
+        fReversalLen = 0.0;
 
         // Set the target value for the step acceptance probability.  The
         // value of 65% comes from the HMC literature.
@@ -199,19 +236,21 @@ public:
 
         // Set up the running average of the likelihood.
         std::copy(fAccepted.begin(), fAccepted.end(), fAveragePoint.begin());
-        fAveragePointTrials = 1;
+        fAveragePointTrials = 0.0;
 
         // Set up a running calculation of the covariance.  This starts the
         // calculation with all the variances equal to 1, and no correlations
         // between the dimensions.  The initial guess is given a weight of 10
         // (each added point has a weight of 1).
         fEstimatedCovariance.ResizeTo(start.size(), start.size());
+        fEXXT.ResizeTo(start.size(), start.size());
         fEstimatedError.ResizeTo(start.size(), start.size());
-        fCovarianceTrials = 10;
+        fCovarianceTrials = 0;
         for (int i=0; i<start.size(); ++i) {
             for (int j=0; j<start.size(); ++j) {
                 if (i == j) fEstimatedCovariance(i,j) = 1.0;
                 else fEstimatedCovariance(i,j) = 0.0;
+                fEXXT(i,j) = 0.0;
             }
         }
         fEstimatedError = fEstimatedCovariance;
@@ -227,7 +266,11 @@ public:
     /// Take a step.  This returns true if a new point has been accepted, and
     /// false if we stay at the old point.  If save is true, then the points
     /// are saved to the output.  This should be called repeatedly by the user
-    /// code.
+    /// code.  The gradient types are defined in PotentialGradient(), but the
+    /// potentially useful values are 0) use the user defined or finite
+    /// differences gradient, 2) use the "covariant" approximation for the
+    /// gradient, or 5) for the gradient to zero.  The values of 2 and 5 are
+    /// used to implement an AHMC (Approximate HMC).
     bool Step(bool save=true, int gradientType = 0) {
         if (fProposed.empty() || fProposedMomentum.empty()
             || fAccepted.empty() || fAcceptedMomentum.empty()) {
@@ -248,17 +291,35 @@ public:
         // steps will be fLeapFrogSteps.
         double epsilon = gRandom->Uniform(0.9*std::abs(fMeanEpsilon),
                                           1.1*std::abs(fMeanEpsilon));
-        LeapFrog(fProposed,fProposedMomentum,fAccepted,
-                 epsilon,std::abs(fLeapFrogSteps),gradientType);
+        int okLeap = LeapFrog(fProposed,fProposedMomentum,fAccepted,
+                               epsilon,std::abs(fLeapFrogSteps),gradientType);
+
+        if (fLeapFrogSteps > 0) {
+            if (okLeap != 2) {
+                if (fMeanEpsilon > 0 && fReversalLen > fMeanEpsilon) {
+                    double targetEpsilon = fReversalLen/8.0;
+                    double deltaEpsilon = targetEpsilon - fMeanEpsilon;
+                    if (deltaEpsilon > 0.0) fMeanEpsilon += 0.1*deltaEpsilon;
+                }
+                if (fLeapFrogSteps < 50) fLeapFrogSteps += 1;
+            }
+            else if (okLeap == 2) {
+                if (fReversalLen < fMeanEpsilon) {
+                    fReversalLen = std::abs(fLeapFrogSteps*epsilon);
+                }
+                else {
+                    fReversalLen = 0.95*fReversalLen;
+                    fReversalLen += 0.05*std::abs(fLeapFrogSteps*epsilon);
+                }
+                if (fLeapFrogSteps > 3) fLeapFrogSteps -= 1;
+                if (fMeanEpsilon > 0) fMeanEpsilon *= 0.99;
+
+            }
+        }
 
         // Find the proposed kinetic and potential energy
         double proposedKinetic = KineticEnergy(fProposedMomentum);
         fProposedPotential = Potential(fProposed);
-
-        // Update the running estimate of the covariance.
-        UpdateCovariance(fAccepted, fAcceptedPotential,
-                         fProposed, fProposedPotential);
-        UpdateErrorMatrix();
 
         // Find the change in energy between the proposed and accepted states.
         // If the leapfrog step was done with perfect accuracy, we would have
@@ -266,21 +327,50 @@ public:
         // (i.e. delta = 0.0).
         double proposedHamiltonian = fProposedPotential + proposedKinetic;
         double acceptedHamiltonian = fAcceptedPotential + initialKinetic;
-        double delta = proposedHamiltonian - acceptedHamiltonian;
 
-        double trial = - std::log(gRandom->Uniform());
-        if (delta > trial) {
-            // The proposed hamiltonian is more than the previously accepted
-            // hamiltonian, so see if it should be rejected.  This depends on
-            // IEEE error handling so that - std::log(0.0) is inf which is
-            // always more than delta.  The Step failed so reverse direction.
-            // This is often overwritten by the next proposed step.
-            for (int i=0; i<fProposed.size(); ++i) {
-                fAcceptedMomentum[i] = -fAcceptedMomentum[i];
-            }
-            fCurrentAcceptance = (fCurrentAcceptance*999.0)/1000.0;
+        if (okLeap && std::isfinite(fProposedPotential)) {
+            // Update the running estimate of the covariance.
+            UpdateCovariance(fAccepted, fAcceptedPotential,
+                             fProposed, fProposedPotential);
+            UpdateErrorMatrix();
         }
         else {
+            if (fMeanEpsilon > 0) fMeanEpsilon = 0.3*fMeanEpsilon;
+        }
+
+        double delta = proposedHamiltonian - acceptedHamiltonian;
+        double trial = - std::log(gRandom->Uniform());
+        if (delta > trial || !std::isfinite(delta)) {
+            HMC_DEBUG(3) << "Reject " << delta
+                         << " " << proposedHamiltonian
+                         << "(" << fProposedPotential
+                         << ":" << proposedKinetic << ")"
+                         << " <-- "
+                         << acceptedHamiltonian
+                         << "(" << fAcceptedPotential
+                         << ":" << initialKinetic << ")"
+                         << std::endl;
+            // The proposed hamiltonian is more than the previously accepted
+            // hamiltonian.  Reject it if it's not finite, or it isn't
+            // accepted as a random "bad" step.  This depends on IEEE error
+            // handling so that - std::log(0.0) is inf which is always more
+            // than delta.  The Step failed so reverse direction.  This is
+            // often overwritten by the next proposed step.
+            for (std::size_t i=0; i<fAcceptedMomentum.size(); ++i) {
+                fAcceptedMomentum[i] = -fAcceptedMomentum[i];
+            }
+            fCurrentAcceptance = (fCurrentAcceptance*4999.0)/5000.0;
+        }
+        else {
+            HMC_DEBUG(3) << "Accept " << delta
+                         << " " << proposedHamiltonian
+                         << "(" << fProposedPotential
+                         << ":" << proposedKinetic << ")"
+                         << " <-- "
+                         << acceptedHamiltonian
+                         << "(" << fAcceptedPotential
+                         << ":" << initialKinetic << ")"
+                         << std::endl;
             // We're keeping a new step.
             for (int i=0; i<fProposed.size(); ++i) {
                 fAccepted[i] = fProposed[i];
@@ -288,12 +378,21 @@ public:
             }
             fAcceptedPotential = fProposedPotential;
             // Update the current acceptance.
-            fCurrentAcceptance = (fCurrentAcceptance*999.0 + 1.0)/1000.0;
+            fCurrentAcceptance = (fCurrentAcceptance*4999.0 + 1.0)/5000.0;
+        }
+
+        // Update the estimate of the central value.  This is simply the
+        // position of the point with the minimum potential.  This is done
+        // after updating the covariance since it's a convenient place seen
+        // after every step.
+        if (fAcceptedPotential < fCentralPotential) {
+            MoveCentralPoint(fAccepted,fAcceptedPotential);
         }
 
         // Save the information to the output tree.
         if (save) SaveStep();
         return true;
+
     }
 
 private:
@@ -317,6 +416,8 @@ private:
             grad.resize(point.size());
         }
 
+        HMC_DEBUG(5) << "Finite";
+
         // FIXME/WARNING!!!! This is a very simple estimate right now!!!
         Vector work(point.size());
         for (int i=0; i<point.size(); ++i) {
@@ -331,7 +432,10 @@ private:
             work[i] += 2.0*du;
             double u2 = Potential(work);
             grad[i] = 0.5*(u2-u1)/du;
+            HMC_DEBUG(6) << " " << grad[i];
+            HMC_DEBUG(7) << "(" << u1 << ":" << u2 << ")";
         }
+        HMC_DEBUG(5) << std::endl;
     }
 
     /// Use the running estimate of the covariance to estimate the gradient!
@@ -339,7 +443,7 @@ private:
         for (int i=0; i<point.size(); ++i) {
             grad[i] = 0.0;
             for (int j=0; j<point.size(); ++j) {
-                grad[i] += fEstimatedError(i,j)*(point[j]-fCentralPoint[j]);
+                grad[i] += fEstimatedError(i,j)*(point[j]-fAveragePoint[j]);
             }
         }
     }
@@ -352,10 +456,11 @@ private:
     /// gradient, where "preferred" means *my* choice, 1) use a direct
     /// calculation (either the user gradient, or the finite differences), 2)
     /// use an approximate, and fast, gradient, 3) force the use of finite
-    /// differences, 4) force the use of the user gradient. Note: The return
-    /// value is for debugging, and should be ignored (it's not part of the
-    /// "API").
-    int PotentialGradient(Vector& grad, const Vector& point, int type=0) {
+    /// differences, 4) force the use of the user gradient, and 5) force tne
+    /// gradient to zero. Note: The return value is for debugging, and should
+    /// be ignored (it's not part of the "API").
+    int PotentialGradient(Vector& grad, const Vector& point, int type) {
+        Vector tgrad(grad);
         ++fPotentialGradientCount;
         switch (type) {
         default:
@@ -366,9 +471,17 @@ private:
             // gradient because the user gradient is the for log(likelihood),
             // while the gradient we need is for -log(likelihood).
             if (fUserGradient(grad,point)) {
+                HMC_DEBUG(5) << "User @";
+                for (int i=0; i<point.size(); ++i) {
+                    HMC_DEBUG(5) << " " << point[i];
+                }
+                HMC_DEBUG(5) << std::endl;
+                HMC_DEBUG(5) << "User  ";
                 for (int i=0; i<grad.size(); ++i) {
                     grad[i] = -grad[i];
+                    HMC_DEBUG(5) << " " << grad[i];
                 }
+                HMC_DEBUG(5) << std::endl;
                 type = 4;
                 break;
             }
@@ -434,7 +547,7 @@ private:
     /// the HMC into a version of minimization using steepest decent.  The
     /// parameter Alpha is set using the SetAlpha() method.
     void ProposeMomentum(Vector &pNew, const Vector& momentum) {
-        if (fAlpha > 0.9999) {
+        if (fAlpha >= 1.0) {
             // An alpha greater or equal to 1.0 means that the original
             // momentum should be returned (damped by the factor fAlpha).
             fAlpha = std::max(1.0,fAlpha);
@@ -461,15 +574,14 @@ private:
     ///
     /// If the input value of "steps" is zero, then this will take one step of
     /// length "epsilon".
-    void LeapFrog(Vector &qNew, Vector& pNew, const Vector &position,
-                  double epsilon, int steps, int type=0) {
+    int LeapFrog(Vector &qNew, Vector& pNew,
+                  const Vector &position,
+                  double epsilon, int steps,
+                  int type=0) {
         qNew = position;
         Vector momentum = pNew;
         Vector grad(momentum.size());
-
-        // Find the gradient at the first point.  This was already calculated,
-        // so it could have been cached!
-        PotentialGradient(grad,qNew,type);
+        int leapStatus = 1;
 
         // First a SPECIAL cheaters short cut.  If "steps" is not positive, do
         // ONE full step and return.  This is NOT normally done.  To use it,
@@ -479,14 +591,23 @@ private:
         // the initial burn-in).  NOTE 2: For HMC to work, the step has to be
         // reversible, so using this breaks the algorithm.
         if (steps<1) {
+#ifdef INCLUDE_GRADIENT_IN_FORCED_STEP
+            // Find the gradient.
+            PotentialGradient(grad,qNew,type);
+            std::cout << "forced step" << std::endl;
             for (std::size_t j=0; j<position.size(); ++j) {
-                pNew[j] = pNew[j] - epsilon*grad[j];
+                 pNew[j] = pNew[j] - epsilon*grad[j];
             }
+#endif
             for (std::size_t j=0; j<position.size(); ++j) {
                 qNew[j] = qNew[j] + epsilon*(momentum[j]+pNew[j])/2.0;
             }
-            return;
+            return leapStatus;
         }
+
+        // Find the gradient at the first point.  This was already calculated,
+        // so it could have been cached!
+        PotentialGradient(grad,qNew,type);
 
         // Do the first half step for pNew (the momentum)
         for (std::size_t j=0; j<position.size(); ++j) {
@@ -502,6 +623,14 @@ private:
             for (std::size_t j=0; j<position.size(); ++j) {
                 pNew[j] = pNew[j] - epsilon*grad[j];
             }
+            // Check to see if the direction has reversed (reached the outer
+            // limit of the orbit).
+            double inner = 0.0;
+            for (std::size_t j=0; j<position.size(); ++j) {
+                inner += pNew[j]*momentum[j];
+            }
+            if (inner >= 0.0) continue;
+            leapStatus = 2;
         }
         // Do the last step for qNew
         for (std::size_t j=0; j<position.size(); ++j) {
@@ -512,28 +641,13 @@ private:
         for (std::size_t j=0; j<position.size(); ++j) {
             pNew[j] = pNew[j] - epsilon*grad[j]/2.0;
         }
+
+        return leapStatus;
     }
 
     /// Move the position of the central point, and update the estimated
     /// covariance to account for the change.
     void MoveCentralPoint(const Vector& newCenter, Parameter newPotential) {
-        // Adjust the covariance to account for the moving center. This
-        // is just a *VERY* simple increase of the variance for each
-        // dimension.
-        Vector delta(newCenter.size());
-        for (int i=0; i < newCenter.size(); ++i) {
-            delta[i] = newCenter[i] - fCentralPoint[i];
-        }
-        for (int i=0; i<newCenter.size(); ++i) {
-            for (int j=i; j<newCenter.size(); ++j) {
-                double r = fEstimatedCovariance(i,j);
-                r -= 2.0*delta[i]*fCentralPoint[j];
-                r -= 2.0*delta[j]*fCentralPoint[i];
-                r += delta[j]*delta[i];
-                fEstimatedCovariance(i,j) = r;
-                if (i != j) fEstimatedCovariance(j,i) = r;
-            }
-        }
         std::copy(newCenter.begin(), newCenter.end(), fCentralPoint.begin());
         fCentralPotential = newPotential;
     }
@@ -553,45 +667,26 @@ private:
             double v = fAveragePoint[i];
             v *= fAveragePointTrials;
             v += accepted[i];
-            v /= fAveragePointTrials + 1;
+            v /= fAveragePointTrials + 1.0;
             fAveragePoint[i] = v;
         }
         fAveragePointTrials = std::min(fCovarianceWindow,
-                                       fAveragePointTrials+1);
+                                       fAveragePointTrials+1.0);
 
-        // Update the estimate of the covariance.  This is a running
-        // calculation of the covariance.
-        double weight = 0.0;
-        weight = std::exp(-proposedPotential) + std::exp(-acceptedPotential);
-        weight = std::exp(-proposedPotential)/weight;
         for (std::size_t i=0; i<accepted.size(); ++i) {
             for (std::size_t j=0; j<i+1; ++j) {
-                double v = fEstimatedCovariance(i,j);
-                double r = (accepted[i]-fCentralPoint[i])
-                    *(accepted[j]-fCentralPoint[j]);
-                if (proposedPotential > acceptedPotential) {
-                    double s = (proposed[i]-fCentralPoint[i])
-                        *(proposed[j]-fCentralPoint[j]);
-                    r = r*(1.0-weight) + s*weight;
-                }
+                double v = fEXXT(i,j);
                 v *= fCovarianceTrials;
-                v += r;
+                v += accepted[i]*accepted[j];
                 v /= fCovarianceTrials + 1.0;
-                if (i == j) fEstimatedCovariance(i,j) = v;
-                else fEstimatedCovariance(i,j) = fEstimatedCovariance(j,i) = v;
+                fEXXT(i,j) = fEXXT(j,i) = v;
+                fEstimatedCovariance(i,j) = fEstimatedCovariance(j,i)
+                    = fEXXT(i,j) - fAveragePoint[i]*fAveragePoint[j];
             }
         }
         fCovarianceTrials = std::min(fCovarianceWindow,
                                      fCovarianceTrials+1.0);
 
-        // Update the estimate of the central value.  This is simply the
-        // position of the point with the minimum potential.  This is done
-        // after updating the covariance to help keep the covariance from
-        // becoming singular.  RECALL: THIS IS AN APPROXIMATION OF THE
-        // COVARIANCE, NOT THE COVARIANCE OF THE POTENTIAL.
-        if (acceptedPotential < fCentralPotential) {
-            MoveCentralPoint(accepted,acceptedPotential);
-        }
     }
 
     /// Update the parameters estimated from the covariance.  The covariance
@@ -601,10 +696,13 @@ private:
     /// when the covariance has changed significantly.  It will also force an
     /// update periodically.
     void UpdateErrorMatrix() {
+        if (!fLeapFrogSteps) return;
+        if (fCovarianceTrials < 2*fEstimatedCovariance.GetNrows()) return;
+
         // Find the current trace...
         fCurrentCovarianceTrace = 0.0;
         for (int i=0; i<fEstimatedCovariance.GetNrows(); ++i) {
-            fCurrentCovarianceTrace += fEstimatedCovariance(i,i);
+            fCurrentCovarianceTrace += std::abs(fEstimatedCovariance(i,i));
         }
         double change = std::abs(fCurrentCovarianceTrace
                                  -fEstimatedCovarianceTrace);
@@ -624,17 +722,14 @@ private:
         // Check if the average point is better than the current central
         // point.  If it is, then the average point becomes the central point.
         double aPot = Potential(fAveragePoint);
-        HMC_DEBUG(1) << "     Central Potential " << fCentralPotential
+        HMC_DEBUG(1) << "   Central Potential " << fCentralPotential
                      << " Average Potential " << aPot
+                     << " Accepted " << GetAcceptanceRate()
                      << std::endl;
         if (aPot < fCentralPotential) {
-            HMC_DEBUG(1) << "     Replace central point with average"
-                         << std::endl;
+            // NOTE: THIS IS BEING SET TO THE AVERAGE POINT, NOT THE MINIMUM
+            // OF THE POTENTIAL.  THE MINIMUM OFTEN ISN'T AT THE AVERAGE.
             MoveCentralPoint(fAveragePoint,aPot);
-        }
-        else {
-            std::copy(fCentralPoint.begin(), fCentralPoint.end(),
-                      fAveragePoint.begin());
         }
 
         double cDist = 0.0;
@@ -642,39 +737,65 @@ private:
             cDist += fCentralPoint[i]*fCentralPoint[i];
         }
         cDist = std::sqrt(cDist);
-        HMC_DEBUG(1) << "     Central Distance -- "
+        HMC_DEBUG(1) << "   Central Distance --"
                      << " " << cDist
                      << " " << fCentralPotential
-                     << " : " << fCentralPoint[0]
-                     << " " << fCentralPoint[1]
-                     << " " << fCentralPoint[2]
-                     << "..."
-                     << std::endl;
+                     << ":";
+        for (int i=0; i<fCentralPoint.size(); ++i) {
+            if (i > 2) {
+                HMC_DEBUG(1) << "..";
+                break;
+            }
+            HMC_DEBUG(1) << " " << fCentralPoint[i];
+        }
+        HMC_DEBUG(1) << std::endl;
 
-        fStepsRemaining = fCentralPoint.size() + fStepCount;
+        fStepsRemaining = 2*fCentralPoint.size() + fStepCount;
         fStepsSinceUpdate = 0;
 
         // Make sure the estimated covariance is positive definite.
         TVectorD eigenValues;
+        double maxScale = 0.0;
+        double minScale = 1E+20;
         do {
             fEstimatedCovariance.EigenVectors(eigenValues);
             bool positiveDefinite = true;
+            double avgEigen = 0.0;
+            double maxEigen = 0.0;
+            double minEigen = 1E+10;
             for (std::size_t i = 0; i<fEstimatedCovariance.GetNrows(); ++i) {
-                if (eigenValues(i)<0.0) {
+                double eigen = eigenValues(i);
+                avgEigen += std::abs(eigen);
+                if (maxEigen < eigen) maxEigen = eigen;
+                if (maxScale < std::abs(eigen)) maxScale = std::abs(eigen);
+                if (minEigen > eigen) minEigen = eigen;
+                if (minScale > std::abs(eigen)) minScale = std::abs(eigen);
+                if (eigen < 0) {
                     positiveDefinite = false;
                 }
             }
             if (positiveDefinite) break;
+            HMC_DEBUG(1) << "Eigenvectors --"
+                         << " average: "
+                         << avgEigen/fEstimatedCovariance.GetNrows()
+                         << " min: " << minEigen
+                         << " max: " << maxEigen
+                         << " scale: " << std::sqrt(minScale)
+                         << " -- " << std::sqrt(maxScale)
+                         << std::endl;
+            HMC_DEBUG(1) << "Covariance is not positive definite" << std::endl;
             for (std::size_t i = 0; i<fEstimatedCovariance.GetNrows(); ++i) {
+                // Make sure the variance for each element isn't too small.
                 double r = fEstimatedCovarianceTrace*1E-6;
                 r /= fEstimatedCovariance.GetNrows();
                 r = std::abs(r);
                 if (fEstimatedCovariance(i,i) < r) {
                     fEstimatedCovariance(i,i) = r;
                 }
+                // Make sure the correlations aren't too large.
                 for (std::size_t j = i+1;
                      j<fEstimatedCovariance.GetNrows(); ++j) {
-                    fEstimatedCovariance(i,j) = 0.95*fEstimatedCovariance(i,j);
+                    fEstimatedCovariance(i,j) = 0.0;
                     fEstimatedCovariance(j,i) = fEstimatedCovariance(i,j);
                 }
             }
@@ -686,36 +807,44 @@ private:
         // the trace.
         fCurrentCovarianceTrace = 0.0;
         for (int i=0; i<fEstimatedCovariance.GetNrows(); ++i) {
-            fCurrentCovarianceTrace += fEstimatedCovariance(i,i);
+            fCurrentCovarianceTrace += std::abs(fEstimatedCovariance(i,i));
         }
         fEstimatedCovarianceTrace = fCurrentCovarianceTrace;
 
         // Estimate the scale of the largest dimension.
-        double maxScale = eigenValues(0);
         maxScale = std::sqrt(maxScale);
+        if (maxScale < 0.1) maxScale = 0.1;
 
         // Estimate the scale of the smallest dimension.
-        double minScale = eigenValues(fEstimatedCovariance.GetNrows()-1);
         minScale = std::sqrt(minScale);
+        if (minScale < 0.01) minScale = 0.01;
 
         // Estimate the circumference of the largest "great circle"
         fEstimatedOrbitLength = 2.0*3.14*maxScale;
 
-        // Use the size of the smallest dimension to update the step
-        // size.
-        if (fMeanEpsilon > 0) fMeanEpsilon = 0.3*minScale;
+        // If the value of fMeanEpsilon is positive, then that means the new
+        // value should be estimated based on what is known about the
+        // covariance.
+        if (fMeanEpsilon > 0) {
+            fMeanEpsilon = 0.2*maxScale;
+            if (fMeanEpsilon > 0.5*minScale) fMeanEpsilon = 0.5*minScale;
+            if (fMeanEpsilon < 0.05*maxScale) fMeanEpsilon = 0.05*maxScale;
+        }
 
         if (fLeapFrogSteps>0) {
             double targetLength = 0.4*fEstimatedOrbitLength;
             fLeapFrogSteps = targetLength/std::abs(fMeanEpsilon);
             fLeapFrogSteps = 2*(fLeapFrogSteps/2 + 1);
+            if (fLeapFrogSteps > 3*fCentralPoint.size()) {
+                fLeapFrogSteps = 3*fCentralPoint.size();
+            }
             if (fMeanEpsilon>0) fMeanEpsilon = targetLength/fLeapFrogSteps;
         }
 
         fEstimatedError = fEstimatedCovariance;
         fEstimatedError.Invert();
 
-        HMC_DEBUG(1) << "     Orbit: " << fEstimatedOrbitLength
+        HMC_DEBUG(1) << "   Orbit: " << fEstimatedOrbitLength
                      << " Scale: [" << minScale
                      << ", " << maxScale << "]"
                      << " Epsilon: " << fMeanEpsilon
@@ -755,6 +884,9 @@ private:
 
     /// The number of leap frog steps to take at each iteration
     int fLeapFrogSteps;
+
+    /// The recent distance traveled before the path reverses.
+    double fReversalLen;
 
     /// The correlation of the momentum from step to step.  If this is zero,
     /// then you get the original HMC.  If it's large, it become similar to an
@@ -797,6 +929,9 @@ private:
 
     /// The estimated covariance of the posterior.
     TMatrixD fEstimatedCovariance;
+
+    // The sum of the "square" terms that are E[X X^T]
+    TMatrixD fEXXT;
 
     // The trials being used for the current estimated covariance.  This
     // will be a value between one and fCovarianceWindow.

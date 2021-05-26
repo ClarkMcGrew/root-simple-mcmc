@@ -1,5 +1,11 @@
 #include "TSimpleHMC.H"
+
+#ifdef USE_HARD_LIKELIHOOD
+#include "THardLogLikelihood.H"
+typedef THardLogLikelihood TDummyLogLikelihood;
+#else
 #include "TDummyLogLikelihood.H"
+#endif
 
 #include <TMatrixD.h>
 #include <TVectorD.h>
@@ -23,33 +29,47 @@ void SimpleHMC(int trials, int maxEvals=-1) {
 #else
     TSimpleHMC<TDummyLogLikelihood> hmc(tree);
 #endif
-    
+
     TDummyLogLikelihood& like = hmc.GetLogLikelihood();
-    
+
     // Initialize the likelihood (if you need to).  The dummy likelihood
     // setups a covariance to make the PDF more interesting.
     like.Init();
-    
+
     // The number of dimensions in the point needs to agree with the number of
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
     Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
-    for (std::size_t i=0; i<p.size(); ++i) p[i] = 0.0;
-    
+    for (std::size_t i=0; i<p.size(); ++i) p[i] = 1.0;
+
     hmc.Start(p,true);
-    
+
+    // Lightly burn in the chain.  This isn't really needed for an HMC.
+    int verbosity = 1000;
+    for (int i=0; i<100+p.size(); ++i) {
+        if (i%verbosity == 0) {
+            std::cout << "Steps: " <<  i
+                      << " Likelihood Calls: " << hmc.GetPotentialCount()
+                      << " Gradient Calls: " << hmc.GetGradientCount()
+                      << std::endl;
+        }
+        hmc.Step(false);
+    }
+
     // Run the chain
     for (int i=0; i<trials; ++i) {
-        if (i%1000 == 0) {
-            std::cout << i << " " << hmc.GetPotentialCount()
+        if (i%verbosity == 0) {
+            std::cout << "Steps: " <<  i
+                      << " Likelihood Calls: " << hmc.GetPotentialCount()
+                      << " Gradient Calls: " << hmc.GetGradientCount()
                       << std::endl;
         }
         hmc.Step(true);
         if (maxEvals > 0 && hmc.GetPotentialCount() > maxEvals) break;
     }
-    
+
     std::cout << "Finished " << trials
               << " trials with " << hmc.GetPotentialCount()
               << " calls and " << hmc.GetGradientCount()

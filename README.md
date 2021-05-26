@@ -7,7 +7,7 @@ project.  While multiple classes have been provided, the *only* one
 that I recommend is the include-file-only TSimpleMCMC templated class
 (i.e. TSimpleMCMC.H).  I consider it to be stable, and am using it in
 "production" code.  The TSimpleHMC class is also pretty stable, but
-required the gradient.
+requires the gradient.
 
 The TSimpleMCMC templated class runs an Markov Chain Monte Carlo using a
 user provided likelihood and stepping proposal.  The resulting MCMC
@@ -143,7 +143,7 @@ used to learn about the different types of behaviors.  Except for the
 TSimpleMCMC.H classes, these examples are probably not useful in an end user
 program, and I control a lot of the input parameters by editing the
 source and recompiling (hey, it's test code).  However, the associated
-TSimple<blah>.H classes generally work.
+TSimple[blah].H classes generally work.
 
 - TSimpleMCMC.H (and friends) : This is the adaptive MCMC described above.
 It's the best tested class, and is my first choice when I'm looking at the

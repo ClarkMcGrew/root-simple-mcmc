@@ -1,10 +1,16 @@
 #include "TSimpleMCMC.H"
+
+#define USE_HARD_LIKELIHOOD
+#ifdef USE_HARD_LIKELIHOOD
+#include "THardLogLikelihood.H"
+typedef THardLogLikelihood TDummyLogLikelihood;
+#else
 #include "TDummyLogLikelihood.H"
+#endif
 
 #include <TRandom3.h>
 
 #include <sstream>
-
 
 void SimpleMCMC(int trials,
                 const char* outputName,
@@ -52,6 +58,7 @@ void SimpleMCMC(int trials,
     // dimensions.
     Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
+    for (std::size_t i=0; i<p.size(); ++i) p[i] = 1.0;
 
     mcmc.Start(p,false);
 
@@ -61,23 +68,43 @@ void SimpleMCMC(int trials,
         std::cout << "State Restored" << std::endl;
     }
 
-#ifdef DUMP_BURNIN
+    int verbosity = 100;
+
+#ifndef SKIP_BURNIN
     // This can be useful for debugging, but isn't good practice.  You should
     // be looking at the burn-in steps to make sure the burn-in is complete.
+    std::cout << "Start burn-in chain" << std::endl;
+
+    int burnin = 10000+10*p.size();
+    // Burnin the chain (don't save the output)
+    for (int i=0; i<burnin; ++i) {
+        if (i%verbosity == 0) {
+            std::cout << "First burn-in " << i << " / " << burnin << std::endl;
+        }
+        mcmc.Step(false);
+    }
+    mcmc.GetProposeStep().UpdateProposal();
+    std::cout << "Finished first burn-in chain" << std::endl;
 
     // Burnin the chain (don't save the output)
-    for (int i=0; i<10000+p.size()*p.size(); ++i) mcmc.Step(false);
+    burnin = 10000+10.0*p.size()*p.size();
+    for (int i=0; i<burnin; ++i) {
+        if (i%verbosity == 0) {
+            std::cout << "Second burn-in " << i << " / " << burnin << std::endl;
+        }
+        mcmc.Step(false);
+    }
     mcmc.GetProposeStep().UpdateProposal();
-    std::cout << "Finished burnin chain" << std::endl;
-
-    // Burnin the chain (don't save the output)
-    for (int i=0; i<10000+10*p.size()*p.size(); ++i) mcmc.Step(false);
-    mcmc.GetProposeStep().UpdateProposal();
-    std::cout << "Finished burnin chain" << std::endl;
+    std::cout << "Finished second burn-in chain" << std::endl;
 #endif
 
     // Run the chain (with output to the tree).
-    for (int i=0; i<trials; ++i) mcmc.Step();
+    for (int i=0; i<trials; ++i) {
+        if (i%verbosity == 0) {
+            std::cout << "Trial " << i << " / " << trials << std::endl;
+        }
+        mcmc.Step();
+    }
     std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"
               << std::endl;
 

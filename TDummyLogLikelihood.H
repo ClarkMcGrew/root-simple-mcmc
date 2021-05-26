@@ -1,12 +1,18 @@
 #ifndef TDummyLogLikelihood_H_seen
 #define TDummyLogLikelihood_H_seen
+
+#include <TMatrixD.h>
+#include <TVectorD.h>
+
 // A dummy log likelihood for testing.  This is an example, but don't
-// slavishly copy it (or you will be sorry!).
+// slavishly copy it (or you will be sorry!).  This is a quadratic.  The
+// correlations between the different dimensions are set during Init().  See
+// the "#define" values there for more information.
 class TDummyLogLikelihood {
 public:
     // Determine the number of dimensions.  This is where the dimensions are
     // defined, and everything else uses it.
-    std::size_t GetDim() const {return 50;}
+    std::size_t GetDim() const {return 100;}
 
     // Calculate the log(likelihood).  The dummy likelihood is a Gaussian
     // (with covariance) centered at zero.  The covariance is set in Init()
@@ -55,18 +61,25 @@ public:
                 // Choose a random correlation
 #ifdef RANDOM_CORRELATION
 #define SET_CORRELATION
-                Covariance(i,j) = gRandom->Uniform(-0.999,0.999)*sig1*sig2;
+                Covariance(i,j) = gRandom->Uniform(-0.9,0.9)*sig1*sig2;
 #endif
 
                 // Choose a correlation based on the variables.  Neighbors are
                 // not correlated, but there is more correlation as the
                 // variables are further apart.
-
 #define VERY_CORRELATED
 #ifdef VERY_CORRELATED
 #define SET_CORRELATION
                 if (i+j==GetDim()-1) {
                     Covariance(i,j) = 0.900*sig1*sig2*(j - i)/(GetDim()-1.0);
+                }
+#endif
+
+                // Make a tri-diagonal correlation.
+#ifdef TRIDIAGONAL_CORRELATED
+#define SET_CORRELATION
+                if (j == i-1) {
+                    Covariance(i,j) = 0.8*sig1*sig2;
                 }
 #endif
 

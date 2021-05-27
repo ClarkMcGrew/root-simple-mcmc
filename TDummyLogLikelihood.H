@@ -59,19 +59,23 @@ public:
                 // the one you want to try).
 
                 // Choose a random correlation
+#define RANDOM_CORRELATION 0.9
 #ifdef RANDOM_CORRELATION
 #define SET_CORRELATION
-                Covariance(i,j) = gRandom->Uniform(-0.9,0.9)*sig1*sig2;
+                Covariance(i,j)
+                    = sig1*sig2*gRandom->Uniform(-RANDOM_CORRELATION,
+                                                 RANDOM_CORRELATION);
 #endif
 
                 // Choose a correlation based on the variables.  Neighbors are
                 // not correlated, but there is more correlation as the
                 // variables are further apart.
-#define VERY_CORRELATED
+// #define VERY_CORRELATED 0.9
 #ifdef VERY_CORRELATED
 #define SET_CORRELATION
                 if (i+j==GetDim()-1) {
-                    Covariance(i,j) = 0.900*sig1*sig2*(j - i)/(GetDim()-1.0);
+                    Covariance(i,j)
+                        = VERY_CORRELATED*sig1*sig2*(j - i)/(GetDim()-1.0);
                 }
 #endif
 

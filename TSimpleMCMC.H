@@ -455,13 +455,10 @@ struct TProposeSimpleStep {
 class TProposeAdaptiveStep {
 public:
     TProposeAdaptiveStep() :
-        fLastValue(0.0), fTrials(0), fSuccesses(0), fAcceptanceWindow(-1),
-        fCovarianceWindow(-1), fNextUpdate(-1), fAcceptance(0.0), fSigma(0.0),
-        fStateInitialized(false) {
-        // Set a default value for the target acceptance rate.  For some
-        // reason, the magic value in the literature is 44%.
-        fTargetAcceptance = 0.44;
-    }
+        fLastValue(0.0), fCovarianceWindow(-1),
+        fTrials(0), fSuccesses(0), fNextUpdate(-1),
+        fAcceptance(0.0), fAcceptanceTrials(0), fAcceptanceWindow(-1),
+        fTargetAcceptance(-1), fSigma(0.0), fStateInitialized(false) { }
 
     /// Take a proposed trial point to fill, the current point, and the
     /// likelihood at the current point.
@@ -583,6 +580,16 @@ public:
     /// normally be very large (and there is a reasonable default), but it
     /// might need to be smaller for some pathelogical distributions.
     void SetCovarianceWindow(int w) {fCovarianceWindow = w;}
+
+    /// Set the target acceptance rate.  The literature proposes values
+    /// between 44% (for one dimension) down to an upper bound of 23.4% above
+    /// about five dimensions.  See https://doi.org/10.1016/j.spa.2007.12.005
+    /// "Optimal acceptance rates for Metropolis algorithms: Moving beyond
+    /// 0.234" (Stochastic Processes and their Applications, Volume 118, Issue
+    /// 12, 2198-2222, 2008) for a full technical discussion.  My reading of
+    /// the paper is the acceptance rate should "usually" be about 23%, but
+    /// sometimes it should be smaller.
+    void SetTargetAcceptance(double a) {fTargetAcceptance = a;}
 
     /// The proposal steps are chosen based on an estimate of the covariance
     /// of the posterior.  This method forces the covariance of the proposal
@@ -789,6 +796,9 @@ public:
         int minWindow = 1000;
         if (fCovarianceWindow < minWindow) fCovarianceWindow = 10000000;
         // After reseting, erase the acceptance history.
+        if (fTargetAcceptance < 0.0) {
+            throw std::runtime_error("target acceptance not initialized");
+        }
         fAcceptance = fTargetAcceptance;
         fAcceptanceTrials = std::min(10.0, 0.5*fAcceptanceWindow);
         // Initialize the central point.
@@ -969,6 +979,20 @@ public:
         fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),2.0) + 1000;
         // The steps until the next update.
         fNextUpdate = fAcceptanceWindow;
+        // Make sure we have a reasonable target acceptance
+        if (fTargetAcceptance < 1E-4) {
+            // Set a default value for the target acceptance rate.  For some
+            // reason, the magic value in the literature is 44% for 1D and
+            // 23.4% For more than several (~5) dimensions.  The default value
+            // is set for high dimensions.  In fact, 23.4% is really suppose
+            // to be an upper bound on the optimal acceptance rate at n-D.
+            // See https://doi.org/10.1016/j.spa.2007.12.005 "Optimal
+            // acceptance rates for Metropolis algorithms: Moving beyond
+            // 0.234" (Stochastic Processes and their Applications, Volume
+            // 118, Issue 12, 2198-2222, 2008
+            if (fLastPoint.size() > 4) fTargetAcceptance = 0.234;
+            else fTargetAcceptance = 0.44;
+        }
         // Reset the proposal covariance as part of the initialization.
         ResetProposal();
     }

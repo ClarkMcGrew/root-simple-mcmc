@@ -22,8 +22,10 @@
 //
 // There are several forms for the multi-dimensional Rosenbrock function.
 // This particular version is suggested by SciPy.  It has a minimum at x =
-// (1,1,...,1), and other local minima at other points [like x =
-// (-1,1,1,...,1)].  There may be multiple global minima.
+// [1,1,...,1], and, possibly, other local minima (e.g. near [-1,1,1,...,1]).
+// The global minimum might be degenerate.  For D=2 (and D=3), it has one global
+// minimum at [1,1] (and [1,1,1]).  For D = 4 to 7 there is a proof that it
+// has one global at [1,1,..,1,1] , and one local minimum near [-1,1,...,1].
 //
 // COMMENT: The Rosenbrock function is a good example of one of the
 // idiosyncracies of Bayesian analysis vs parameter optimization.  At high

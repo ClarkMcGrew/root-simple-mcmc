@@ -39,7 +39,7 @@ public:
     // Determine the number of dimensions.  This is where the dimensions are
     // defined, and everything else uses it.  The hard likelihood is only
     // defined for two or more dimensions.
-    std::size_t GetDim() const {return 500;}
+    std::size_t GetDim() const {return 6;}
 
     // Set the next definition to a positive value to change the curvature of
     // the Rosenbrock function near the minimum.  The TRADITIONAL value is

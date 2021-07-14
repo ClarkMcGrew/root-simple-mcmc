@@ -38,8 +38,33 @@ void SimpleMCMC(int trials,
     // different sequence is used everytime the code is run.
     gRandom = new TRandom3(0);
 
-    // Create the MCMC object and get the likelihood.
+#ifdef USE_THIS_PROPOSAL
+#undef USE_THIS_PROPOSAL
+    // This is the same as the default (below).  It's here for completeness
+    // and testing.
+    TSimpleMCMC<TDummyLogLikelihood,TProposeAdaptiveStep> mcmc(tree);
+#endif
+
+#ifdef USE_THIS_PROPOSAL
+#undef USE_THIS_PROPOSAL
+    // This is just the simple step.  This is the best choice with SKIP_MCMC
+    // is defined (see #define below).  I wouldn't normally suggest it
+    // otherwise, but since it's a lot faster than the adaptive step [O(D) vs
+    // O(D^3)] it may be worth a try if your likelihood function is extremely
+    // fast and you a bazillion steps (I've never seen that in practice).
+    TSimpleMCMC<TDummyLogLikelihood,TProposeSimpleStep> mcmc(tree);
+    // Should be adjusted for each likelihood.
+    mcmc.GetProposeStep().fSigma = 0.001;
+#endif
+
+#define USE_THIS_PROPOSAL
+#ifdef USE_THIS_PROPOSAL
+#undef USE_THIS_PROPOSAL
+    // Create the MCMC object and get the likelihood.  Probably best for
+    // everything except debugging the likelihood with SKIP_MCMC.
     TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
+#endif
+
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();
 
     // Initialize the likelihood (if you need to).  The dummy likelihood
@@ -57,7 +82,11 @@ void SimpleMCMC(int trials,
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
     Vector p(like.GetDim());
+    // Randomize the starting point
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
+    // Override p and start near the global minimum for the Rosenbrock function
+    for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(0.50,1.5);
+    // Override p and start at the global minimum for the Rosenbrock function
     for (std::size_t i=0; i<p.size(); ++i) p[i] = 1.0;
 
     mcmc.Start(p,false);
@@ -70,7 +99,15 @@ void SimpleMCMC(int trials,
 
     int verbosity = 100;
 
-#ifndef SKIP_BURNIN
+/// Uncomment this to "minimize" the likelihood
+// #define SKIP_MCMC
+
+/// Uncomment this to do a separate burnin stage.  Usually you shouldn't use
+/// this and then skip the first "N" entries of the chain.  "N" is a determined
+/// based on the autocorrelation.
+// #define BURNIN_CHAIN
+
+#if defined(BURNIN_CHAIN) && !defined(SKIP_MCMC)
     // This can be useful for debugging, but isn't good practice.  You should
     // be looking at the burn-in steps to make sure the burn-in is complete.
     std::cout << "Start burn-in chain" << std::endl;
@@ -103,7 +140,14 @@ void SimpleMCMC(int trials,
         if (i%verbosity == 0) {
             std::cout << "Trial " << i << " / " << trials << std::endl;
         }
+
+#if !defined(SKIP_MCMC)
+        // Make a normal MCMC step.
         mcmc.Step();
+#else
+        // Make a debugging (minimization) step
+        mcmc.Step(true,false);
+#endif
     }
     std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"
               << std::endl;

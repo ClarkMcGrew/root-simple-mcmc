@@ -2,7 +2,11 @@
 #
 # Pick a file and run it.  This mostly implements a naming convention
 # to simplify runing several chains in parallel.  It expects that all
-# of the jobs are going to be run in a single directory. This is run
+# of the jobs are going to be run in a single directory.  The script
+# works fine with a single chain, but is intended to handle lots (and
+# lots) of parallel chains.  The intended use case is when you have
+# access to a cluster with >>100 available cores so you can run
+# several hundred parallel chains. This is run
 #
 #   continue-chain.sh [-N] basefile trials executable 
 #
@@ -183,7 +187,7 @@ while true; do
         break
     fi
     if [ "x${MAKE_NEW_FILE}" != "xyes" ]; then
-        echo You need to run this with -N first
+        echo You need to run this with -N first, or jobs need to finish.
         exit 1
     fi
     MAKE_NEW_FILE=no

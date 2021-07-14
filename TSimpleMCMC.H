@@ -283,9 +283,13 @@ public:
 
     /// Take a step.  This returns true if a new point has been accepted, and
     /// false if we stay at the old point.  If save is true, then the points
-    /// are saved to the output.  The "save" can be set to false to save space
-    /// but almost never should.
-    bool Step(bool save=true) {
+    /// are saved to the output.  The first parameter, "save", can be set to
+    /// false to save file space but should almost always be true.  The second
+    /// parameter, "metropolis", can be used to help debug a complicated
+    /// likelihood, but should almost always be true.  When "metropolis" is
+    /// false, this becomes a very slow method to maximize the likelihood (the
+    /// step is always to more probable).
+    bool Step(bool save=true, bool metropolis=true) {
         if (fProposed.empty() || fAccepted.empty()) {
             MCMC_ERROR << "Must initialize starting point" << std::endl;
             throw;
@@ -319,11 +323,21 @@ public:
             return false;
         }
 
-        // Decide if the proposed step should be taken.
+        // Decide if the proposed step should be taken. When delta is
+        // negative, the proposed point is less probable than the accepted
+        // point.
         double delta = fProposedLogLikelihood - fAcceptedLogLikelihood;
         if (delta < 0.0 ) {
-            // The proposed likelihood is less than the previously accepted
-            // likelihood, so see if it should be rejected.
+            // If the metropolis method parameter is false, then don't apply
+            // the Metropolis algorithm.  Setting this to false can help test
+            // complicated likelihoods, but it should almost always be true.
+            if (!metropolis) return false;
+
+            // The new point is less probable than the accepted point.  Apply
+            // the Metropolis-Hastings condition to see if the step should be
+            // made.  This is using the Metropolis special case of the
+            // Metropolis-Hastings algorithm and depends on the proposal being
+            // a symetric function (like a Gaussian).
             double trial = std::log(gRandom->Uniform());
             if (delta < trial) {
                 // The new step should be rejected, so save the old step.
@@ -332,6 +346,24 @@ public:
                 if (save) SaveStep(false);
                 return false;
             }
+        }
+
+        // If this is being used as an (inefficient) minimization, print a new
+        // step when one is found.
+        if (!metropolis) {
+            static int localCount = 0;
+            MCMC_DEBUG(1) << localCount
+                          << " L: "   << fProposedLogLikelihood;
+            const std::size_t elems = 4;
+            for (std::size_t i = 0;
+                 i < std::min(elems,fProposed.size()); ++i) {
+                MCMC_DEBUG(1) << " [" << i << "]=" << fProposed[i];
+            }
+            if (elems < fProposed.size()) {
+                MCMC_DEBUG(1) << " [..." << fProposed.size() << "]";
+            }
+            MCMC_DEBUG(1) << std::endl;
+            ++localCount;
         }
 
         // We're keeping a new step.
@@ -439,6 +471,8 @@ struct TProposeSimpleStep {
     bool AttachState(TTree* tree) {return false;}
     bool SaveState(bool force) {return false;}
     bool StateSaved() {return false;}
+    void SetDim(int dim) {};
+    void UpdateProposal() {};
 
 };
 

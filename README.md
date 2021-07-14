@@ -196,6 +196,14 @@ find the most probable value of the last variable, because of the
 behavior away from best fit, the most probable marginalized value is
 very close to zero (NOT ONE, WHICH IS THE MOST PROBABLE POINT).
 
+- continue-chain.sh : A script to make manage running a large number
+of parallel chains on a cluster with lots (>>1000) cores.  The details
+are in the script documentation, but the general use case is to submit
+a large number (e.g. a "few" hundred) jobs with the -N option to start
+chains, and then keep submitting batchs of a "few hundred" short jobs
+to add epochs. The first few epochs are lost to burn in, but then the
+chains can be added togther.
+
 # Installation
 
 The file TSimpleMCMC.H (also, TSimpleHMC.h) defines an include-file-only

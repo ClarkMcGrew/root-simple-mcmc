@@ -35,7 +35,7 @@
 #include <TTree.h>
 #include <TKey.h>
 
-void MakeAutocorrelations() {
+void MakeAutocorrelation() {
     // Find the tree in the file.
     TList *list = gFile->GetListOfKeys();
     TIter iter(list->MakeIterator());

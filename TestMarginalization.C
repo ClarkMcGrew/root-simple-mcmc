@@ -34,37 +34,43 @@ void TestMarginalization() {
     inputTree->SetBranchAddress("Accepted",&accepted);
     inputTree->GetEntry(0);
     std::size_t dim = accepted->size();
+    std::size_t allDim = dim;
 
     if (dim > 10) {
-        std::cout << "I think you're making a mistake" << std::endl;
-        return;
+        std::cout << "I think you're making a mistake, only doing 10"
+                  << std::endl;
+        dim = 10;
     }
 
     // Define the range for the plots... This could be A LOT more intelligent.
     std::vector<std::pair<double,double>> range;
 
-    for (int i= 0; i< dim; ++i) {
+    for (int i= 0; i< allDim; ++i) {
         range.push_back(std::make_pair(accepted->at(i),accepted->at(i)));
     }
 
+    double absMin = 1E+20;
+    double absMax = -absMin;
     for (int entry = 0; entry < entries; ++entry) {
         inputTree->GetEntry(entry);
-        for (int i= 0; i< dim; ++i) {
+        for (int i= 0; i< allDim; ++i) {
             range[i].first = std::min(range[i].first,accepted->at(i));
             range[i].second = std::max(range[i].second,accepted->at(i));
+            absMin = std::min(absMin,accepted->at(i));
+            absMax = std::max(absMax,accepted->at(i));
         }
         entry += 0.001*entries;
     }
 
     std::cout << "Dimensions: " << dim << std::endl;
     std::vector<TH1F*> marginalized;
-    for (int i= 0; i< dim; ++i) {
+    for (int i= 0; i< allDim; ++i) {
         std::ostringstream name;
         std::ostringstream title;
         name << "marginalized" << i;
         title << "Marginalization: Dimension " << i;
         TH1F* hist = new TH1F(name.str().c_str(),title.str().c_str(),
-                              100, -1.5, 1.5);
+                              100, absMin, absMax);
         marginalized.push_back(hist);
         std::cout << range[i].first << " " << range[i].second << std::endl;
     }
@@ -87,18 +93,22 @@ void TestMarginalization() {
 
     for (int entry = 0; entry < entries; ++entry) {
         inputTree->GetEntry(entry);
-        for (int i = 0; i<dim; ++i) {
+        if ((entry % 1000) == 0) std::cout << "entry " << entry << std::endl;
+        for (int i = 0; i<allDim; ++i) {
             marginalized[i]->Fill(accepted->at(i));
-            for (int j = 0; j<dim; ++j) {
-                correlations[dim*i+j]->Fill(accepted->at(i),accepted->at(j));
+            if (i < dim) {
+                for (int j = 0; j<dim; ++j) {
+                    correlations[dim*i+j]->Fill(accepted->at(i),
+                                                accepted->at(j));
+               }
             }
         }
     }
 
-    marginalized[0]->SetTitle("Marginalized Rosenbrock (all dimensions)");
+    marginalized[0]->SetTitle("Marginalized Distributions (all dimensions)");
     marginalized[0]->Draw("C");
     marginalized[0]->SetLineWidth(3.0);
-    for (int i = 1; i<dim; ++i) {
+    for (int i = 1; i<allDim; ++i) {
         marginalized[i]->Draw("same,C");
     }
     marginalized[dim-1]->SetLineWidth(3.0);

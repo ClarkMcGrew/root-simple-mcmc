@@ -1,11 +1,29 @@
 #include "TSimpleMCMC.H"
 
+#undef LIKELIHOOD_DEFINED
+
 // #define USE_HARD_LIKELIHOOD
+#ifndef LIKELIHOOD_DEFINED
 #ifdef USE_HARD_LIKELIHOOD
+#define LIKELIHOOD_DEFINED
 #warning Using HARD likelihood
 #include "THardLogLikelihood.H"
 typedef THardLogLikelihood TDummyLogLikelihood;
-#else
+#endif
+#endif
+
+// #define USE_ASYM_LIKELIHOOD
+#ifndef LIKELIHOOD_DEFINED
+#ifdef USE_ASYM_LIKELIHOOD
+#define LIKELIHOOD_DEFINED
+#warning Using ASYM likelihood
+#include "TAsymLogLikelihood.H"
+typedef TASymLogLikelihood TDummyLogLikelihood;
+#endif
+#endif
+
+#ifndef LIKELIHOOD_DEFINED
+#define LIKELIHOOD_DEFINED
 #warning Using normal likelihood
 #include "TDummyLogLikelihood.H"
 #endif
@@ -78,6 +96,9 @@ void SimpleMCMC(int trials,
 
     // Set one of the dimensions to use a uniform proposal over a fixed range.
     // mcmc.GetProposeStep().SetUniform(1,-0.5,0.5);
+
+    // Override the target acceptance (this value is for very low dimension).
+    // mcmc.GetProposeStep().SetTargetAcceptance(0.44);
 
     // The number of dimensions in the point needs to agree with the number of
     // dimensions in the likelihood.  You can either hard code it, or do like

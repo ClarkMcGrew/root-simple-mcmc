@@ -101,7 +101,8 @@ void MakeAutocorrelation() {
     // Loop over the entries and fill the auto correlation kernel.  Only look
     // at the end of the file.  The number of trials is limited so that this
     // goes faster.
-    int trials = 2*maxLag + std::sqrt(entries);
+    const double precision = 0.01;
+    int trials = maxLag + 1.0/(precision*precision*precision);
     trials = std::min(trials,entries);
     int fills = 0;            // Track total entries added to the ring buffer.
     for (int entry = entries-trials; entry < entries; ++entry) {

@@ -1,10 +1,12 @@
 #include "TSimpleMCMC.H"
 
-#define USE_HARD_LIKELIHOOD
+// #define USE_HARD_LIKELIHOOD
 #ifdef USE_HARD_LIKELIHOOD
+#warning Using HARD likelihood
 #include "THardLogLikelihood.H"
 typedef THardLogLikelihood TDummyLogLikelihood;
 #else
+#warning Using normal likelihood
 #include "TDummyLogLikelihood.H"
 #endif
 

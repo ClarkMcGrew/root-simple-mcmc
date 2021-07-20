@@ -59,12 +59,16 @@ public:
                 // the one you want to try).
 
                 // Choose a random correlation
-#define RANDOM_CORRELATION 0.9
+// #define RANDOM_CORRELATION 0.9
 #ifdef RANDOM_CORRELATION
 #define SET_CORRELATION
-                Covariance(i,j)
-                    = sig1*sig2*gRandom->Uniform(-RANDOM_CORRELATION,
-                                                 RANDOM_CORRELATION);
+#warning Using random correlations with RANDOM_CORRELATION
+                {
+                    double c = 0.3*RANDOM_CORRELATION*gRandom->Gaus();
+                    if (c > RANDOM_CORRELATION) c = RANDOM_CORRELATION;
+                    if (c < -RANDOM_CORRELATION) c = -RANDOM_CORRELATION;
+                    Covariance(i,j) = c*sig1*sig2;
+                }
 #endif
 
                 // Choose a correlation based on the variables.  Neighbors are
@@ -73,6 +77,7 @@ public:
 // #define VERY_CORRELATED 0.9
 #ifdef VERY_CORRELATED
 #define SET_CORRELATION
+#warning Using very correlated correlations with VERY_CORRELATED
                 if (i+j==GetDim()-1) {
                     Covariance(i,j)
                         = VERY_CORRELATED*sig1*sig2*(j - i)/(GetDim()-1.0);
@@ -80,23 +85,28 @@ public:
 #endif
 
                 // Make a tri-diagonal correlation.
+#define TRIDIAGONAL_CORRELATED 0.5
 #ifdef TRIDIAGONAL_CORRELATED
 #define SET_CORRELATION
-                if (j == i-1) {
-                    Covariance(i,j) = 0.8*sig1*sig2;
+#warning Using tridiagonal correlations with TRIDIAGONAL_CORRELATED
+                if (j == i+4) {
+                    Covariance(i,j) = TRIDIAGONAL_CORRELATED*sig1*sig2;
                 }
 #endif
 
                 // Choose no correlation
 #ifndef SET_CORRELATION
+#warning Using no correlations.
                 Covariance(i,j) = 0.0;
 #endif
 
+                // Make sure it's symmetric
                 Covariance(j,i) = Covariance(i,j);
             }
         }
 
         // Make sure the covariance is positive definite.
+        double reduction = 1.0;
         do {
             TVectorD eigenValues(GetDim());
             Covariance.EigenVectors(eigenValues);
@@ -107,6 +117,7 @@ public:
                 }
             }
             if (positiveDefinite) break;
+            reduction *= 0.9;
             for (std::size_t i = 0; i<GetDim(); ++i) {
                 for (std::size_t j = i+1; j<GetDim(); ++j) {
                     Covariance(i,j) = 0.9*Covariance(i,j);
@@ -114,6 +125,8 @@ public:
                 }
             }
         } while (true);
+        std::cout << "Likelihood correlation reduction of " << reduction
+                  << std::endl;
 
         Error = Covariance;
         Error.Invert();

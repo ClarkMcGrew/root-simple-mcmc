@@ -498,7 +498,10 @@ public:
         fTrials(0), fSuccesses(0), fNextUpdate(-1),
         fAcceptance(0.0), fAcceptanceTrials(0),
         fAcceptanceWindow(-1), fAcceptanceRigidity(1.0),
-        fTargetAcceptance(-1), fSigma(0.0), fStateInitialized(false) { }
+        fTargetAcceptance(-1), fSigma(0.0), fStateInitialized(false) {
+        fMaxCorrelation = std::numeric_limits<Parameter>::epsilon();
+        fMaxCorrelation = 1.0 - std::sqrt(fMaxCorrelation);
+    }
 
     /// Take a proposed trial point to fill, the current point, and the
     /// likelihood at the current point.
@@ -636,6 +639,11 @@ public:
         fCorrelations.push_back(CorrelationRecord(dim1,dim2,correlation));
     }
 
+    /// This is the maximum allowed correlation between dimensions of the
+    /// step proposal.  It is used to manage numeric error accumulatino, but
+    /// could also be set based on the known properties of the posterior.
+    void SetMaximumCorrelation(double c) {fMaxCorrelation = c;}
+
     /// Set (get) the window over which to estimate the covariance.  This can
     /// normally be very large (and there is a reasonable default), but it
     /// might need to be smaller for some pathelogical distributions.
@@ -771,17 +779,21 @@ public:
             }
         }
 
-        // Check for very large correlations
+        // Check for very large correlations.
         for (std::size_t i=0; i<fLastPoint.size(); ++i) {
             for (std::size_t j=i+1; j<fLastPoint.size(); ++j) {
                 double correlation = fCurrentCov(i,j);
                 correlation /= std::sqrt(fCurrentCov(i,i));
                 correlation /= std::sqrt(fCurrentCov(j,j));
                 // Don't worry about "small" correlations.
-                double maxCorrelation = 0.95;
-                if (correlation < maxCorrelation) continue;
+                if (correlation < fMaxCorrelation) continue;
+                MCMC_DEBUG(1) << "Correnlation between dimension " << i
+                              << " and " << j
+                              << " has been reduced from " << fCurrentCov(i,i)
+                              << " to " << fMaxCorrelation*fMaxCorrelation
+                              << std::endl;
                 // Oops, the correlation is too large, so reduce it..
-                fCurrentCov(i,j) = maxCorrelation*maxCorrelation;
+                fCurrentCov(i,j) = fMaxCorrelation*fMaxCorrelation;
                 fCurrentCov(i,j) *= std::sqrt(fCurrentCov(i,i));
                 fCurrentCov(i,j) *= std::sqrt(fCurrentCov(j,j));
                 fCurrentCov(j,i) = fCurrentCov(i,j);
@@ -1254,6 +1266,9 @@ private:
 
     // The correlations that have been set.
     std::vector<CorrelationRecord> fCorrelations;
+
+    // The maximum allowed correlation.
+    double fMaxCorrelation;
 
     // The number of times a step has been proposed since the last reset.
     int fTrials;

@@ -1085,6 +1085,7 @@ public:
         tree->SetBranchAddress("AdaptiveCentralPoint",NULL);
         tree->SetBranchAddress("AdaptiveCentralPointTrials",NULL);
         tree->SetBranchAddress("AdaptiveCovariance",NULL);
+        tree->SetBranchAddress("AdaptiveCovarianceTrace",NULL);
         tree->SetBranchAddress("AdaptiveCovarianceTrials",NULL);
 
         // Now update the proposal.
@@ -1106,6 +1107,7 @@ public:
         tree->Branch("AdaptiveCentralPoint",&fSaveCentralPoint);
         tree->Branch("AdaptiveCentralPointTrials",&fSaveCentralPointTrials);
         tree->Branch("AdaptiveCovariance",&fSaveCovariance);
+        tree->Branch("AdaptiveCovarianceTrace",&fSaveTrace);
         tree->Branch("AdaptiveCovarianceTrials",&fSaveCovarianceTrials);
         return true;
     }

@@ -94,6 +94,17 @@ void SimpleMCMC(int trials,
     // Set the number of dimensions for the proposal.
     mcmc.GetProposeStep().SetDim(like.GetDim());
 
+#ifdef IMPOSE_CORRELATIONS
+    for (int i=0; i<like.GetDim(); ++i) {
+        double si = std::sqrt(TDummyLogLikelihood::Covariance(i,i));
+        for (int j=i+1; j<like.GetDim(); ++j) {
+            double sj = std::sqrt(TDummyLogLikelihood::Covariance(j,j));
+            double c = TDummyLogLikelihood::Covariance(i,j);
+            mcmc.GetProposeStep().SetCorrelation(i,j,c/si/sj);
+        }
+    }
+#endif
+
     // Set one of the dimensions to use a uniform proposal over a fixed range.
     // mcmc.GetProposeStep().SetUniform(1,-0.5,0.5);
 
@@ -158,10 +169,21 @@ void SimpleMCMC(int trials,
     std::cout << "Finished second burn-in chain" << std::endl;
 #endif
 
+    mcmc.GetProposeStep().SetAcceptanceWindow(2000);
+    mcmc.GetProposeStep().SetNextUpdate(2000);
+
     // Run the chain (with output to the tree).
     for (int i=0; i<trials; ++i) {
         if (i%verbosity == 0) {
-            std::cout << "Trial " << i << " / " << trials << std::endl;
+            std::cout << "Trial " << i << " / " << trials
+                      << " A: " << mcmc.GetProposeStep().GetAcceptance()
+                      << "/" << mcmc.GetProposeStep().GetSuccesses()
+                      << " ("<<mcmc.GetProposeStep().GetAcceptanceWindow()
+                      << ":" << mcmc.GetProposeStep().GetNextUpdate() << ")"
+                      << " S: " << mcmc.GetProposeStep().GetSigma()
+                      << " T: "
+                      << mcmc.GetProposeStep().GetCovarianceTrace()
+                      << std::endl;
         }
 
 #if !defined(SKIP_MCMC)

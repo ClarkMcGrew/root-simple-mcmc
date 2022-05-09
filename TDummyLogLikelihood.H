@@ -71,21 +71,21 @@ public:
                 }
 #endif
 
-                // Choose a correlation based on the variables.  Neighbors are
-                // not correlated, but there is more correlation as the
-                // variables are further apart.
-// #define VERY_CORRELATED 0.9
+                // Choose a correlation based on the variables.  The matrix
+                // forms and "X" with large correlation along the crossing
+                // diagonal.
+#define VERY_CORRELATED 0.999
 #ifdef VERY_CORRELATED
 #define SET_CORRELATION
 #warning Using very correlated correlations with VERY_CORRELATED
-                if (i+j==GetDim()-1) {
+                if ((i+j) == GetDim()-1) {
                     Covariance(i,j)
                         = VERY_CORRELATED*sig1*sig2*(j - i)/(GetDim()-1.0);
                 }
 #endif
 
                 // Make a tri-diagonal correlation.
-#define TRIDIAGONAL_CORRELATED 0.5
+// #define TRIDIAGONAL_CORRELATED 0.5
 #ifdef TRIDIAGONAL_CORRELATED
 #define SET_CORRELATION
 #warning Using tridiagonal correlations with TRIDIAGONAL_CORRELATED
@@ -105,11 +105,15 @@ public:
             }
         }
 
+        if (GetDim() < 6) Covariance.Print();
+
+        Error = Covariance;
+
         // Make sure the covariance is positive definite.
         double reduction = 1.0;
         do {
             TVectorD eigenValues(GetDim());
-            Covariance.EigenVectors(eigenValues);
+            Error.EigenVectors(eigenValues);
             bool positiveDefinite = true;
             for (std::size_t i = 0; i<GetDim(); ++i) {
                 if (eigenValues(i)<0.0) {
@@ -117,18 +121,18 @@ public:
                 }
             }
             if (positiveDefinite) break;
+            std::cout << "Not positive definite" << std::endl;
             reduction *= 0.9;
             for (std::size_t i = 0; i<GetDim(); ++i) {
                 for (std::size_t j = i+1; j<GetDim(); ++j) {
-                    Covariance(i,j) = 0.9*Covariance(i,j);
-                    Covariance(j,i) = Covariance(i,j);
+                    Error(i,j) = reduction*Covariance(i,j);
+                    Error(j,i) = reduction*Covariance(i,j);
                 }
             }
         } while (true);
         std::cout << "Likelihood correlation reduction of " << reduction
                   << std::endl;
 
-        Error = Covariance;
         Error.Invert();
     }
 

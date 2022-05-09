@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <stdexcept>
 
 #include <TRandom.h>
 #include <TFile.h>
@@ -24,7 +25,9 @@ typedef std::vector<Parameter> Vector;
 #define MCMC_DEBUG(level) if (level <= (MCMC_DEBUG_LEVEL)) std::cout
 #endif
 
+#ifndef MCMC_ERROR
 #define MCMC_ERROR (std::cout <<__FILE__<<":: " << __LINE__ << ": " )
+#endif
 
 class TProposeAdaptiveStep;
 
@@ -292,7 +295,7 @@ public:
     bool Step(bool save=true, bool metropolis=true) {
         if (fProposed.empty() || fAccepted.empty()) {
             MCMC_ERROR << "Must initialize starting point" << std::endl;
-            throw;
+            throw std::invalid_argument("Uninitialized starting point");
         }
 
         ++fTotalSteps;
@@ -401,6 +404,8 @@ public:
 
 protected:
 
+    /// A wrapper around the call to the likelihood.  The main purpose is to
+    /// count the number of times the likelihood is called.
     double GetLogLikelihoodValue(const Vector& point) {
         ++fLogLikelihoodCount;
         return fLogLikelihood(point);
@@ -491,7 +496,8 @@ public:
     TProposeAdaptiveStep() :
         fLastValue(0.0), fCovarianceWindow(-1),
         fTrials(0), fSuccesses(0), fNextUpdate(-1),
-        fAcceptance(0.0), fAcceptanceTrials(0), fAcceptanceWindow(-1),
+        fAcceptance(0.0), fAcceptanceTrials(0),
+        fAcceptanceWindow(-1), fAcceptanceRigidity(1.0),
         fTargetAcceptance(-1), fSigma(0.0), fStateInitialized(false) { }
 
     /// Take a proposed trial point to fill, the current point, and the
@@ -503,7 +509,7 @@ public:
             // Apply a sanity check.  This MUST be true.
             MCMC_ERROR << "Proposal and current vectors must be same size."
                        << std::endl;
-            throw;
+            throw std::logic_error("Proposal and current length mismatch");
         }
 
         UpdateState(current,value);
@@ -528,7 +534,26 @@ public:
         }
     }
 
+    /// Get the current estimated center of the point cloud.
     const Vector& GetEstimatedCenter() const {return fCentralPoint;}
+
+    /// Get the number of steps tried in the current chain.
+    int GetTrials() const {return fTrials;}
+
+    /// Get the number of successful steps in the current chain.
+    int GetSuccesses() const {return fSuccesses;}
+
+    /// Get the current step size in standard deviations of the current
+    /// estimate of the posterior covariance.  The step size is adjusted to
+    /// have an acceptance (approximately) equal to the target acceptance.
+    double GetSigma() const {return fSigma;}
+
+    /// Get the current acceptance (averaged over the acceptance window).  The
+    /// step size will be adjusted so that this asymtotically approaches the
+    /// target acceptance.  The usual target acceptance is about 23% (when
+    /// there are more than 5 dimensions.
+    double GetAcceptance() const {return fAcceptance;}
+    double GetAcceptanceTrials() const {return fAcceptanceTrials;}
 
     /// Set the number of dimensions in the proposal.  This must match the
     /// dimensionality of the likelihood being use.
@@ -542,6 +567,7 @@ public:
         fLastPoint.resize(dim);
         fProposalType.resize(dim);
     }
+    int GetDim() const {return fLastPoint.size();}
 
     /// Set the proposal function for a particular dimension to be uniform.
     void SetUniform(int dim, double minimum, double maximum) {
@@ -551,7 +577,7 @@ public:
                        << std::endl;
             return;
         }
-        MCMC_DEBUG(0) << "Overriding proposal for dimension " << dim
+        MCMC_DEBUG(2) << "Overriding proposal for dimension " << dim
                       << " to be uniform between "
                       << "[" << minimum
                       << ", " << maximum << "]."
@@ -572,7 +598,7 @@ public:
                        << std::endl;
             return;
         }
-        MCMC_DEBUG(0) << "Overriding proposal for dimension " << dim
+        MCMC_DEBUG(2) << "Overriding proposal for dimension " << dim
                       << " to be Gaussian with "
                       << sigma << " sigma."
                       << std::endl;
@@ -610,12 +636,15 @@ public:
         fCorrelations.push_back(CorrelationRecord(dim1,dim2,correlation));
     }
 
-    /// Set the window over which to estimate the covariance.  This can
+    /// Set (get) the window over which to estimate the covariance.  This can
     /// normally be very large (and there is a reasonable default), but it
     /// might need to be smaller for some pathelogical distributions.
     void SetCovarianceWindow(int w) {fCovarianceWindow = w;}
 
-    /// Set the target acceptance rate.  The literature proposes values
+    /// Get the number of trials used to calculate the covariance.
+    double GetCovarianceTrials() const {return fCovarianceTrials;}
+
+    /// Set (get) the target acceptance rate.  The literature proposes values
     /// between 44% (for one dimension) down to an upper bound of 23.4% above
     /// about five dimensions.  See https://doi.org/10.1016/j.spa.2007.12.005
     /// "Optimal acceptance rates for Metropolis algorithms: Moving beyond
@@ -624,12 +653,24 @@ public:
     /// the paper is the acceptance rate should "usually" be about 23%, but
     /// sometimes it should be smaller.
     void SetTargetAcceptance(double a) {fTargetAcceptance = a;}
+    double GetTargetAcceptance() const {return fTargetAcceptance;}
+
+    /// Set (get) the number of trials used to calculate the
+    /// acceptance.
+    void SetAcceptanceWindow(double a) {fAcceptanceWindow = a;}
+    double GetAcceptanceWindow() const {return fAcceptanceWindow;}
+
+    /// Set (get) the acceptance rigidity.  This is the rough exponential
+    /// constant needed to relax the acceptance to the target acceptance.  It
+    /// is provided in terms of a fraction of the acceptance window.
+    void SetAcceptanceRigidity(double r) {fAcceptanceRigidity = r;}
+    double GetAcceptanceRigidity() const {return fAcceptanceRigidity;}
 
     /// The proposal steps are chosen based on an estimate of the covariance
     /// of the posterior.  This method forces the covariance of the proposal
     /// to be updated.  It's automatically called during the run, so (while it
     /// can be) it probably doesn't need to be called in user code.
-    void UpdateProposal() {
+    void UpdateProposal(bool fromReset = false) {
         MCMC_DEBUG(1) << "Update after "
                       << fSuccesses << "/" << fTrials << " successes"
                       << " (Accepting: " << fAcceptance
@@ -648,14 +689,14 @@ public:
             trace += fCurrentCov(i,i);
         }
         MCMC_DEBUG(1) << " Covariance Trace: " << trace
-                      << std::endl
-                      << "        = ";
+                      << std::endl;
+        MCMC_DEBUG(2) << "        = ";
         for (std::size_t i=0; i<fLastPoint.size(); ++i) {
-            MCMC_DEBUG(1) << fCurrentCov(i,i);
-            if (i<fLastPoint.size()-1) MCMC_DEBUG(1) << " + ";
-            if (i%6 == 5) MCMC_DEBUG(1) << std::endl << "           ";
+            MCMC_DEBUG(2) << fCurrentCov(i,i);
+            if (i<fLastPoint.size()-1) MCMC_DEBUG(2) << " + ";
+            if (i%6 == 5) MCMC_DEBUG(2) << std::endl << "           ";
         }
-        MCMC_DEBUG(1) << std::endl;
+        MCMC_DEBUG(2) << std::endl;
 
         // The proposal is being updated, so deweight the current covariance
         // so that the new information weighs more.
@@ -680,9 +721,12 @@ public:
         // this successes, then UpdateProposal() is done.
         TDecompChol chol(fCurrentCov);
         if (chol.Decompose()) {
+            MCMC_DEBUG(1) << "Correlation matrix was decomposed" << std::endl;
             fDecomposition = chol.GetU();
             return;
         }
+        MCMC_DEBUG(1) << "Correlation matrix decomposition failed"
+                      << std::endl;
 
         // The Cholesky decomposition has failed.  That usually means that the
         // current estimate of the covariance has a one or more pairs of
@@ -711,7 +755,7 @@ public:
                 MCMC_ERROR << "Illegal proposal type for dimension " << i
                            << ": Type is " << fProposalType[i].type
                            << std::endl;
-                throw;
+                throw std::invalid_argument("Illegal proposal type");
             }
             // The minimum scale of the covariance relative to the prechain
             // estimate of the variance.  This should be picked to make sure
@@ -747,8 +791,21 @@ public:
         // Make another attempt at finding the Cholesky decomposition.
         TDecompChol chol2(fCurrentCov);
         if (chol2.Decompose()) {
+            MCMC_DEBUG(1) << "Correlation matrix was decomposed"
+                          << std::endl;
             fDecomposition = chol2.GetU();
             return;
+        }
+
+        MCMC_DEBUG(1) << "Correlation decomposition failed after conditioning"
+                      << std::endl;
+
+        // If this is attempting to work with the user provided correlation
+        // matrix after a reset, then throw.  This will happen at the very
+        // beginning of the run and can only be fixed by changing the inputs.
+        if (fromReset) {
+            throw std::runtime_error(
+                "Decomposition of user correlations failed");
         }
 
         // Something is going very wrong, so reset the Proposal.  This
@@ -761,11 +818,11 @@ public:
     /// forget about the path to stocastic equilibrium since the covariance is
     /// reset back to the initial conditions.
     void ResetProposal() {
-        MCMC_DEBUG(2) << "Reset the proposal after "
+        MCMC_DEBUG(1) << "Reset the proposal after "
                       << fSuccesses << " successes "
                       << " in " << fTrials << " trials "
                       << std::endl;
-        MCMC_DEBUG(2) << " Recent acceptance rate was " << fAcceptance
+        MCMC_DEBUG(1) << " Recent acceptance rate was " << fAcceptance
                       << " with an adjusted width of " << fSigma
                       << std::endl;
         // Reset the success and trials counts.
@@ -784,7 +841,7 @@ public:
                 if (i == j
                     && fProposalType[i].type == 0
                     && fProposalType[i].param1 > 0) {
-                    MCMC_DEBUG(0) << "Overriding covariance for dimension "
+                    MCMC_DEBUG(2) << "Overriding covariance for dimension "
                                   << i
                                   << " from "
                                   << fCurrentCov(i,i)
@@ -794,7 +851,7 @@ public:
                     fCurrentCov(i,i) = fProposalType[i].param1;
                 }
                 else if (i == j && fProposalType[i].type == 1) {
-                    MCMC_DEBUG(0) << "Overriding covariance for "
+                    MCMC_DEBUG(2) << "Overriding covariance for "
                                   << i
                                   << " to uniform "
                                   << std::endl;
@@ -825,13 +882,15 @@ public:
 
         // Set a default window to average the covariance over.  This
         // basically averages over everything.  It shouldn't be infinite since
-        // the way the covariance is calculated startes to run into round-off
-        // errors if the is overly large.
+        // the way the covariance is calculated starts to run into round-off
+        // errors if the is overly large.  If the current window is less than
+        // minWindow, then it's not initialized or the user is asking for a
+        // silly value, and "we know better".
         int minWindow = 1000;
         if (fCovarianceWindow < minWindow) fCovarianceWindow = 10000000;
         // After reseting, erase the acceptance history.
         if (fTargetAcceptance < 0.0) {
-            throw std::runtime_error("target acceptance not initialized");
+            throw std::runtime_error("Target acceptance not initialized");
         }
         fAcceptance = fTargetAcceptance;
         fAcceptanceTrials = std::min(10.0, 0.5*fAcceptanceWindow);
@@ -842,7 +901,7 @@ public:
         // information coming from the first guess at the central point.
         fCentralPointTrials =  std::min(10.0, 0.1*fCovarianceWindow);
         // This makes sure everything is set properly.
-        UpdateProposal();
+        UpdateProposal(true);
     }
 
     /// Restore the proposal state so that an existing chain can be continued.
@@ -919,7 +978,7 @@ public:
                 if (cov == fSaveCovariance.end()) {
                     MCMC_ERROR << "Past the end of the covariance"
                                << std::endl;
-                    throw;
+                    throw std::logic_error("Past the end of the covariance");
                 }
                 if (i == j) fCurrentCov(i,i) = *cov;
                 else fCurrentCov(i,j) = fCurrentCov(j,i) = *cov;
@@ -963,8 +1022,7 @@ public:
         return true;
     }
 
-    /// Fill the output tree with the current state.  This gets the output
-    /// tree as an parameter, but it should not call "tree->Fill()".
+    /// Fill the output tree with the current state.
     bool SaveState(bool fullSave=false) {
         fSaveTrials = fTrials;
         fSaveSuccesses = fSuccesses;
@@ -972,26 +1030,42 @@ public:
         fSaveAcceptance = fAcceptance;
         fSaveAcceptanceTrials = fAcceptanceTrials;
         fSaveSigma = fSigma;
-        fSaveCentralPoint = fCentralPoint;
         fSaveCentralPointTrials = fCentralPointTrials;
-        if (fullSave) {
-            fSaveCovariance.clear();
-            for (std::size_t i=0; i<fLastPoint.size(); ++i) {
-                for (std::size_t j=0; j<i+1; ++j) {
-                    fSaveCovariance.push_back(fCurrentCov(i,j));
-                }
+        fSaveCovarianceTrials = fCovarianceTrials;
+        fSaveCentralPoint.clear();
+        fSaveCovariance.clear();
+        if (!fullSave) return false;
+        fSaveCentralPoint = fCentralPoint;
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            for (std::size_t j=0; j<i+1; ++j) {
+                fSaveCovariance.push_back(fCurrentCov(i,j));
             }
         }
-        fSaveCovarianceTrials = fCovarianceTrials;
 
         return true;
     }
 
     /// Notification that the last saved state has been written to the output.
-    /// This can be used by the proposal class to zero out the tree branchs
-    /// (this will limit the output size).
+    /// This can be used by the proposal class to zero out the tree branches.
     bool StateSaved() {
+#define MCMC_ZERO_ADAPTIVE_STEP_SAVED_STATE
+#ifdef MCMC_ZERO_ADAPTIVE_STEP_SAVED_STATE
+        /// The state of the adaptive step is not usually updated between
+        /// steps, so the same values can be written to the output tree many
+        /// times.  The ROOT compression usually does a pretty good job of
+        /// recovering the space, but this might sometimes reduce the output
+        /// size.
+        fSaveTrials = 0;
+        fSaveSuccesses = 0;
+        fSaveNextUpdate = 0;
+        fSaveAcceptance = 0;
+        fSaveAcceptanceTrials = 0;
+        fSaveSigma = 0;
+        fSaveCentralPointTrials = 0;
+        fSaveCovarianceTrials = 0;
+        fSaveCentralPoint.clear();
         fSaveCovariance.clear();
+#endif
         return false;
     }
 
@@ -1010,7 +1084,9 @@ public:
         fLastValue = value;
         std::copy(current.begin(), current.end(), fLastPoint.begin());
         // Set a default window to average the acceptance over.
-        fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),2.0) + 1000;
+        if (fAcceptanceWindow < 0) {
+            fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),1.5) + 1000;
+        }
         // The steps until the next update.
         fNextUpdate = fAcceptanceWindow;
         // Make sure we have a reasonable target acceptance
@@ -1060,8 +1136,10 @@ private:
         // the ratio of measured acceptance to the target acceptance is one,
         // then the value of fSigma will not change.  The exponent is chosen
         // to control how quickly the fSigma value will be changed.w
-        fSigma *= std::pow(fAcceptance/fTargetAcceptance,
-                           std::min(0.001,0.5/fAcceptanceWindow));
+        fSigma *=
+            std::pow(fAcceptance/fTargetAcceptance,
+                     std::min(0.01,
+                              1.0/(fAcceptanceRigidity*fAcceptanceWindow)));
 
         // Update the estimate of the central value.  This is simply a running
         // average of the position of the points in the posterior.
@@ -1147,8 +1225,11 @@ private:
     // posterior").
     double fCovarianceWindow;
 
-    // The current Cholesky decomposition of the covariance.  This is not
-    // updated everytime the fCurrentCov estimate changes.
+    // The current decomposition of the covariance.  This is not updated
+    // everytime the fCurrentCov estimate changes.  A Cholesky decomposition,
+    // but this only works when the covariance is positive definite.  It might
+    // not not be numerically positive definite due to error accumulation.
+    // Eigenvalue decomposition can be used, but it is very slow.
     TMatrixD fDecomposition;
 
     // Record the type of proposal to use for each dimension
@@ -1197,6 +1278,9 @@ private:
 
     // The window to average the acceptance over.
     double fAcceptanceWindow;
+
+    // The rigidity of the acceptance relaxation
+    double fAcceptanceRigidity;
 
     // The target acceptance rate for the chain.
     double fTargetAcceptance;

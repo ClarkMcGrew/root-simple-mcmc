@@ -487,17 +487,17 @@ struct TProposeSimpleStep {
 /// user defined intervals (normally about the dimensionality squared), the
 /// estimated covariance is updated using the current state of the Markov
 /// chain. (Notice that this means it's not really a Markov Chain!  You need
-/// to check the ergodcity, but it's almost always OK.)  It works OK as long
-/// as the posterior is not to badly behaved (e.g. more or less Gaussian).  If
-/// the posterior is not Gaussian, then this probably won't fail, but it can
-/// become much less efficient.
+/// to check the ergodcity, but it's almost always OK.  Do not update too
+/// frequently) It is valid long as the posterior is not to badly behaved
+/// (e.g. more or less Gaussian).  If the posterior is very non Gaussian it
+/// can become much less efficient.
 class TProposeAdaptiveStep {
 public:
     TProposeAdaptiveStep() :
         fLastValue(0.0), fCovarianceWindow(-1),
         fTrials(0), fSuccesses(0), fNextUpdate(-1),
         fAcceptance(0.0), fAcceptanceTrials(0),
-        fAcceptanceWindow(-1), fAcceptanceRigidity(1.0),
+        fAcceptanceWindow(-1), fAcceptanceRigidity(2.0),
         fTargetAcceptance(-1), fSigma(0.0), fStateInitialized(false) {
         fMaxCorrelation = std::numeric_limits<Parameter>::epsilon();
         fMaxCorrelation = 1.0 - std::sqrt(fMaxCorrelation);
@@ -652,6 +652,15 @@ public:
     /// Get the number of trials used to calculate the covariance.
     double GetCovarianceTrials() const {return fCovarianceTrials;}
 
+    /// Get the trace of the covariance.
+    double GetCovarianceTrace() const {
+        double trace = 0.0;
+        for (int i = 0; i<fLastPoint.size(); ++i) {
+            trace += fCurrentCov(i,i);
+        }
+        return trace;
+    }
+
     /// Set (get) the target acceptance rate.  The literature proposes values
     /// between 44% (for one dimension) down to an upper bound of 23.4% above
     /// about five dimensions.  See https://doi.org/10.1016/j.spa.2007.12.005
@@ -667,6 +676,12 @@ public:
     /// acceptance.
     void SetAcceptanceWindow(double a) {fAcceptanceWindow = a;}
     double GetAcceptanceWindow() const {return fAcceptanceWindow;}
+
+    /// Set (get) the number of trials until the next proposal update.  This
+    /// grows with each successfull update, but can be overridden by this
+    /// method.
+    void SetNextUpdate(double n) {fNextUpdate = n;}
+    double GetNextUpdate() const {return fNextUpdate;}
 
     /// Set (get) the acceptance rigidity.  This is the rough exponential
     /// constant needed to relax the acceptance to the target acceptance.  It
@@ -688,15 +703,13 @@ public:
         MCMC_DEBUG(1) << " Covariance estimated with window of"
                       << " " << int(fCovarianceTrials)
                       << std::endl;
-        if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 5) {
+        if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
             fCurrentCov.Print();
         }
 
-        double trace = 0.0;
-        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
-            trace += fCurrentCov(i,i);
-        }
-        MCMC_DEBUG(1) << " Covariance Trace: " << trace
+        double currentTrace = GetCovarianceTrace();
+
+        MCMC_DEBUG(1) << " Covariance Trace: " << currentTrace
                       << std::endl;
         MCMC_DEBUG(2) << "        = ";
         for (std::size_t i=0; i<fLastPoint.size(); ++i) {
@@ -705,6 +718,14 @@ public:
             if (i%6 == 5) MCMC_DEBUG(2) << std::endl << "           ";
         }
         MCMC_DEBUG(2) << std::endl;
+
+        MCMC_DEBUG(2) << " Update Sigma " << fSigma << " T:" << fSigmaTrace;
+        // Adjust the step for the new covariance.
+        fSigma = fSigma*std::sqrt(fSigmaTrace/currentTrace);
+        fSigmaTrace = currentTrace;
+        MCMC_DEBUG(2) << " -> " << fSigma << " T:" << fSigmaTrace
+                      << std::endl;
+
 
         // The proposal is being updated, so deweight the current covariance
         // so that the new information weighs more.
@@ -731,6 +752,9 @@ public:
         if (chol.Decompose()) {
             MCMC_DEBUG(1) << "Correlation matrix was decomposed" << std::endl;
             fDecomposition = chol.GetU();
+            if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
+                fDecomposition.Print();
+            }
             return;
         }
         MCMC_DEBUG(1) << "Correlation matrix decomposition failed"
@@ -752,6 +776,10 @@ public:
             if (fProposalType[i].type == 0 && fProposalType[i].param1>0) {
                 // A Gaussian proposal with a variance other than one...
                 expectedVariance = fProposalType[i].param1;
+            }
+            else if (fProposalType[i].type == 0) {
+                // A Gaussian proposal with a variance other than one...
+                expectedVariance = 1.0;
             }
             else if (fProposalType[i].type == 1) {
                 // A uniform proposal...
@@ -806,15 +834,53 @@ public:
             MCMC_DEBUG(1) << "Correlation matrix was decomposed"
                           << std::endl;
             fDecomposition = chol2.GetU();
+            if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
+                fDecomposition.Print();
+            }
             return;
         }
 
         MCMC_DEBUG(1) << "Correlation decomposition failed after conditioning"
                       << std::endl;
 
+        // The fast option didn't work, so use eigen value decomposition.
+        // This will rotate to the best basis, but is very slow.
+        TVectorD eigenValues;
+        TMatrixD eigenVectors = fCurrentCov.EigenVectors(eigenValues);
+
+        // Make the eigenValues positive.  Negative values are OK by symmetry,
+        // but make positive so the square-root can be taken.
+        double eigenSum = 0.0;
+        for (int i=0; i<fLastPoint.size(); ++i) {
+            eigenSum += std::abs(eigenValues(i));
+            if (eigenValues(i) < 0) eigenValues(i) = -eigenValues(i);
+            double sigma = std::sqrt(eigenValues(i));
+            if (sigma > 1.0-fMaxCorrelation) continue;
+            sigma = 1.0-fMaxCorrelation;
+            if (sigma < 1E-7) sigma = 1E-7; // Protect against numeric error
+            eigenValues(i) = sigma*sigma;
+        }
+
+        // Copy into the decomposition.  Make sure the diagonal is positive
+        // and reverse the vector if not (the direction is symmetric).
+        for (int i=0; i<fLastPoint.size(); ++i) {
+            double rms = std::sqrt(eigenValues(i));
+            if (eigenVectors(i,i) < 0.0) rms = -rms;
+            for (int j=0; j<fLastPoint.size(); ++j) {
+                fDecomposition(j,i) = rms*eigenVectors(i,j);
+            }
+        }
+
+        if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
+            fDecomposition.Print();
+        }
+
+        if (eigenSum > 1E-6) return;
+
         // If this is attempting to work with the user provided correlation
         // matrix after a reset, then throw.  This will happen at the very
-        // beginning of the run and can only be fixed by changing the inputs.
+        // beginning of the run if the inputs are invalid and can only be
+        // fixed by changing the inputs.
         if (fromReset) {
             throw std::runtime_error(
                 "Decomposition of user correlations failed");
@@ -892,6 +958,8 @@ public:
                 = c->correlation*std::sqrt(v1)*std::sqrt(v2);
         }
 
+        fSigmaTrace = GetCovarianceTrace();
+
         // Set a default window to average the covariance over.  This
         // basically averages over everything.  It shouldn't be infinite since
         // the way the covariance is calculated starts to run into round-off
@@ -899,7 +967,14 @@ public:
         // minWindow, then it's not initialized or the user is asking for a
         // silly value, and "we know better".
         int minWindow = 1000;
-        if (fCovarianceWindow < minWindow) fCovarianceWindow = 10000000;
+        if (fCovarianceWindow < minWindow) {
+            fCovarianceWindow = fLastPoint.size();
+            fCovarianceWindow *= fLastPoint.size();
+            fCovarianceWindow *= fLastPoint.size();
+            fCovarianceWindow += minWindow;
+            double r = std::numeric_limits<double>::epsilon();
+            fCovarianceWindow = std::max(fCovarianceWindow,std::sqrt(1.0/r));
+        }
         // After reseting, erase the acceptance history.
         if (fTargetAcceptance < 0.0) {
             throw std::runtime_error("Target acceptance not initialized");
@@ -950,6 +1025,7 @@ public:
                                &fSaveCentralPointTrials);
         Vector* addrSaveCovariance = &fSaveCovariance;
         tree->SetBranchAddress("AdaptiveCovariance",&addrSaveCovariance);
+        tree->SetBranchAddress("AdaptiveCovarianceTrace",&fSaveTrace);
         tree->SetBranchAddress("AdaptiveCovarianceTrials",
                                &fSaveCovarianceTrials);
 
@@ -1042,6 +1118,7 @@ public:
         fSaveAcceptance = fAcceptance;
         fSaveAcceptanceTrials = fAcceptanceTrials;
         fSaveSigma = fSigma;
+        fSaveTrace = GetCovarianceTrace();
         fSaveCentralPointTrials = fCentralPointTrials;
         fSaveCovarianceTrials = fCovarianceTrials;
         fSaveCentralPoint.clear();
@@ -1150,7 +1227,7 @@ private:
         // to control how quickly the fSigma value will be changed.w
         fSigma *=
             std::pow(fAcceptance/fTargetAcceptance,
-                     std::min(0.01,
+                     std::min(1.0/500.0,
                               1.0/(fAcceptanceRigidity*fAcceptanceWindow)));
 
         // Update the estimate of the central value.  This is simply a running
@@ -1186,7 +1263,11 @@ private:
         // Periodically change how the proposal is updated based on the
         // current estimate of the covariance.
         if (accepted && (--fNextUpdate)<1) {
-            fNextUpdate= fAcceptanceWindow + 0.5*fSuccesses;
+            double maxUp = current.size()*current.size();
+            double up = 0.5*fSuccesses;
+            // This can be numerically simplified, but the calculation becomes
+            // less numerically stable.
+            fNextUpdate = fAcceptanceWindow + maxUp - maxUp/(up+1.0);
             UpdateProposal();
         }
 
@@ -1303,6 +1384,13 @@ private:
     // The current width of the proposal.
     double fSigma;
     double fSaveSigma;
+
+    // The trace of the covariance matrix this fSigma is associated with.
+    // This is set with the decomposition is done.
+    double fSigmaTrace;
+
+    // Save the current trace for convergence checks
+    double fSaveTrace;
 
     // Keep track of whether we've actually been called.
     bool fStateInitialized;

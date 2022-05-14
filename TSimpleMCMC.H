@@ -12,6 +12,7 @@
 #include <TFile.h>
 #include <TTree.h>
 #include <TMatrixD.h>
+#include <TMatrixDSymEigen.h>
 #include <TDecompChol.h>
 
 typedef double Parameter;
@@ -26,7 +27,7 @@ typedef std::vector<Parameter> Vector;
 #endif
 
 #ifndef MCMC_ERROR
-#define MCMC_ERROR (std::cout <<__FILE__<<":: " << __LINE__ << ": " )
+#define MCMC_ERROR (std::cout <<__FILE__<<":: "<<__LINE__<<": ")
 #endif
 
 class TProposeAdaptiveStep;
@@ -317,11 +318,8 @@ public:
         // practice, zero probability is flagged by a non finite value
         // (e.g. inf, -inf, or nan), or by a log likelihood of less than
         // -1E+30.  That's a probability of less than 10**(-4E+29).
-        if (!std::isfinite(fProposedLogLikelihood)) {
-            if (save) SaveStep(false);
-            return false;
-        }
-        if (fProposedLogLikelihood < -0.999999E+30) {
+        if (!std::isfinite(fProposedLogLikelihood)
+            || (fProposedLogLikelihood < -0.999999E+30)) {
             if (save) SaveStep(false);
             return false;
         }
@@ -332,15 +330,18 @@ public:
         double delta = fProposedLogLikelihood - fAcceptedLogLikelihood;
         if (delta < 0.0 ) {
             // If the metropolis method parameter is false, then don't apply
-            // the Metropolis algorithm.  Setting this to false can help test
-            // complicated likelihoods, but it should almost always be true.
+            // the Metropolis algorithm and only take steps that increase the
+            // probability.  Setting metropolis to false turns this into an
+            // inefficient maximum likelihood fitter.  Setting this to false
+            // can help test complicated likelihoods, but it should almost
+            // always be true.
             if (!metropolis) return false;
 
             // The new point is less probable than the accepted point.  Apply
             // the Metropolis-Hastings condition to see if the step should be
             // made.  This is using the Metropolis special case of the
             // Metropolis-Hastings algorithm and depends on the proposal being
-            // a symetric function (like a Gaussian).
+            // a symmetric function (like a Gaussian).
             double trial = std::log(gRandom->Uniform());
             if (delta < trial) {
                 // The new step should be rejected, so save the old step.
@@ -351,8 +352,8 @@ public:
             }
         }
 
-        // If this is being used as an (inefficient) minimization, print a new
-        // step when one is found.
+        // If this is being used as an (inefficient) minimization algorithm,
+        // print that a new step when one is found.
         if (!metropolis) {
             static int localCount = 0;
             MCMC_DEBUG(1) << localCount
@@ -624,17 +625,17 @@ public:
                        << std::endl;
             return;
         }
-        if (correlation < -0.99) {
+        if (correlation < -fMaxCorrelation) {
             MCMC_ERROR << "Correlation is out of valid range: "
                        << correlation
                        << std::endl;
-            correlation = -0.99;
+            correlation = -fMaxCorrelation;
         }
-        if (correlation > 0.99) {
+        if (correlation > fMaxCorrelation) {
             MCMC_ERROR << "Correlation is out of valid range: "
                        << correlation
                        << std::endl;
-            correlation = 0.99;
+            correlation = fMaxCorrelation;
         }
         fCorrelations.push_back(CorrelationRecord(dim1,dim2,correlation));
     }
@@ -648,6 +649,7 @@ public:
     /// normally be very large (and there is a reasonable default), but it
     /// might need to be smaller for some pathelogical distributions.
     void SetCovarianceWindow(int w) {fCovarianceWindow = w;}
+    double GetCovarianceWindow() const {return fCovarianceWindow;}
 
     /// Get the number of trials used to calculate the covariance.
     double GetCovarianceTrials() const {return fCovarianceTrials;}
@@ -655,7 +657,7 @@ public:
     /// Get the trace of the covariance.
     double GetCovarianceTrace() const {
         double trace = 0.0;
-        for (int i = 0; i<fLastPoint.size(); ++i) {
+        for (std::size_t i = 0; i<fLastPoint.size(); ++i) {
             trace += fCurrentCov(i,i);
         }
         return trace;
@@ -685,7 +687,10 @@ public:
 
     /// Set (get) the acceptance rigidity.  This is the rough exponential
     /// constant needed to relax the acceptance to the target acceptance.  It
-    /// is provided in terms of a fraction of the acceptance window.
+    /// is provided as a factor of the acceptance window.  When the rigidity
+    /// is more than 100, the step size is fixed and will not be adapted based
+    /// on the acceptance rate.  The value can be as small as 0.5, but typical
+    /// values should be around 2.0 or greater.
     void SetAcceptanceRigidity(double r) {fAcceptanceRigidity = r;}
     double GetAcceptanceRigidity() const {return fAcceptanceRigidity;}
 
@@ -719,18 +724,29 @@ public:
         }
         MCMC_DEBUG(2) << std::endl;
 
-        MCMC_DEBUG(2) << " Update Sigma " << fSigma << " T:" << fSigmaTrace;
-        // Adjust the step for the new covariance.
+        // Adjust the step size for the new covariance.
+        MCMC_DEBUG(1) << " Update Sigma " << fSigma << " T:" << fSigmaTrace;
         fSigma = fSigma*std::sqrt(fSigmaTrace/currentTrace);
         fSigmaTrace = currentTrace;
-        MCMC_DEBUG(2) << " -> " << fSigma << " T:" << fSigmaTrace
+        MCMC_DEBUG(1) << " -> " << fSigma << " T:" << fSigmaTrace
                       << std::endl;
 
+        // This could be algebraically simplified, but the calculation becomes
+        // less numerically stable with large numbers of successes.  This
+        // implementation remains stable as "up" becomes very large.
+        double maxUp = fLastPoint.size()*fLastPoint.size();
+        double up = 0.5*fSuccesses;
+        fNextUpdate = fAcceptanceWindow + maxUp - maxUp/(up+1.0);
 
         // The proposal is being updated, so deweight the current covariance
         // so that the new information weighs more.
         fCovarianceTrials = std::max(1000.0,0.1*fCovarianceTrials);
         fCovarianceTrials = std::min(fCovarianceTrials,0.1*fCovarianceWindow);
+
+        MCMC_DEBUG(1) << " Next update: " << fNextUpdate
+                      << " Effective trials in previous covariance: "
+                      << fCovarianceTrials
+                      << std::endl;
 
         // The proposal is being updated, so deweight the current acceptance
         // so that the new information weighs more.
@@ -746,6 +762,10 @@ public:
             }
         }
 
+        // The minimum allowed variance for the posterior along any axis.
+        double minVar = std::numeric_limits<Parameter>::epsilon();
+
+#ifndef MCMC_SKIP_CHOLESKY_DECOMPOSITION
         // Decompose the current covariance and use it for the proposal.  If
         // this successes, then UpdateProposal() is done.
         TDecompChol chol(fCurrentCov);
@@ -757,29 +777,27 @@ public:
             }
             return;
         }
-        MCMC_DEBUG(1) << "Correlation matrix decomposition failed"
+        MCMC_DEBUG(1) << "Covariance matrix decomposition failed"
                       << std::endl;
 
         // The Cholesky decomposition has failed.  That usually means that the
         // current estimate of the covariance has a one or more pairs of
-        // variables that are too correlated, or that the variance of one of
-        // the variables has become to small.  This can happen when the chain
-        // gets "stuck" at a point.  The solution tried here is to look
-        // variables that have a very small variance and to increase it.  It
-        // also looks for pairs of variables that have a large correlation and
-        // "manually" reduces the correlation.
+        // variables that are too correlated, the variance of one of the
+        // variables has become to small, or there is a numeric (e.g. nan)
+        // problem.  This can happen when the chain gets "stuck" at a point.
 
-        // Check for very small variances.
+        // Check for very small variances, or invalid variances.  The minimum
+        // scale of the covariance is relative to the prechain estimate of the
+        // variance.  This should be picked to make sure that there aren't
+        // numeric problems...
         for (std::size_t i=0; i<fLastPoint.size(); ++i) {
-            // The prechain estimate of the variance for the variable.
+            // Get the prechain estimate of the variance for the variable.
             double expectedVariance = 1.0;
-            if (fProposalType[i].type == 0 && fProposalType[i].param1>0) {
-                // A Gaussian proposal with a variance other than one...
-                expectedVariance = fProposalType[i].param1;
-            }
-            else if (fProposalType[i].type == 0) {
-                // A Gaussian proposal with a variance other than one...
+            if (fProposalType[i].type == 0) {
                 expectedVariance = 1.0;
+                if (fProposalType[i].param1>0) {
+                    expectedVariance = fProposalType[i].param1;
+                }
             }
             else if (fProposalType[i].type == 1) {
                 // A uniform proposal...
@@ -793,35 +811,64 @@ public:
                            << std::endl;
                 throw std::invalid_argument("Illegal proposal type");
             }
-            // The minimum scale of the covariance relative to the prechain
-            // estimate of the variance.  This should be picked to make sure
-            // that there aren't numeric problems...
-            double minimum
-                = std::sqrt(std::numeric_limits<Parameter>::epsilon());
-            if (fCurrentCov(i,i) < minimum*expectedVariance) {
+            if (!std::isfinite(fCurrentCov(i,i))) {
+                fCurrentCov(i,i) = expectedVariance;
+                MCMC_DEBUG(1) << "Variance for dimension " << i
+                              << " is not a finite number.  Set to "
+                              << fCurrentCov(i,i)
+                              << std::endl;
+            }
+            if (fCurrentCov(i,i) < 0.0) {
+                fCurrentCov(i,i) = minVar*expectedVariance;
+                MCMC_DEBUG(1) << "Variance for dimension " << i
+                              << " is negative.  Set to "
+                              << fCurrentCov(i,i)
+                              << std::endl;
+            }
+            if (fCurrentCov(i,i) < minVar*expectedVariance) {
                 MCMC_DEBUG(1) << "Variance for dimension " << i
                               << " has been increased from " << fCurrentCov(i,i)
-                              << " to " << minimum*expectedVariance
+                              << " to " << minVar*expectedVariance
                               << std::endl;
-                fCurrentCov(i,i) = minimum*expectedVariance;
+                fCurrentCov(i,i) = minVar*expectedVariance;
+            }
+            if (fCurrentCov(i,i) < minVar) {
+                MCMC_DEBUG(1) << "Variance for dimension " << i
+                              << " has underflow. Set from " << fCurrentCov(i,i)
+                              << " to " << minVar
+                              << std::endl;
+                fCurrentCov(i,i) = minVar;
             }
         }
 
-        // Check for very large correlations.
+        // Check for very large correlations and other numeric problems with
+        // the correlations.
         for (std::size_t i=0; i<fLastPoint.size(); ++i) {
             for (std::size_t j=i+1; j<fLastPoint.size(); ++j) {
                 double correlation = fCurrentCov(i,j);
                 correlation /= std::sqrt(fCurrentCov(i,i));
                 correlation /= std::sqrt(fCurrentCov(j,j));
-                // Don't worry about "small" correlations.
-                if (correlation < fMaxCorrelation) continue;
-                MCMC_DEBUG(1) << "Correnlation between dimension " << i
-                              << " and " << j
-                              << " has been reduced from " << fCurrentCov(i,i)
-                              << " to " << fMaxCorrelation*fMaxCorrelation
-                              << std::endl;
-                // Oops, the correlation is too large, so reduce it..
-                fCurrentCov(i,j) = fMaxCorrelation*fMaxCorrelation;
+                // non finite correlations are zero.
+                if (!std::isfinite(correlation)) {
+                    MCMC_DEBUG(1) << "Correlation between dimension " << i
+                                  << " and " << j
+                                  << " is not finite.  Set " << correlation
+                                  << " to " << 0.0
+                                  << std::endl;
+                    correlation = 0.0;
+                }
+                // Only worry about "large" correlations.
+                if (std::abs(correlation) > fMaxCorrelation) {
+                    // Oops, the correlation is too large, so reduce it..
+                    MCMC_DEBUG(1) << "Correlation between dimension " << i
+                                  << " and " << j
+                                  << " has been reduced from " << correlation;
+                    if (correlation > 0.0) correlation = fMaxCorrelation;
+                    else correlation = - fMaxCorrelation;
+                    MCMC_DEBUG(1) << " to " << correlation
+                                  << std::endl;
+                }
+                fCurrentCov(i,j) = correlation;
                 fCurrentCov(i,j) *= std::sqrt(fCurrentCov(i,i));
                 fCurrentCov(i,j) *= std::sqrt(fCurrentCov(j,j));
                 fCurrentCov(j,i) = fCurrentCov(i,j);
@@ -840,42 +887,134 @@ public:
             return;
         }
 
-        MCMC_DEBUG(1) << "Correlation decomposition failed after conditioning"
+        MCMC_DEBUG(1) << "Covariance decomposition failed after conditioning"
                       << std::endl;
+#endif
 
-        // The fast option didn't work, so use eigen value decomposition.
-        // This will rotate to the best basis, but is very slow.
-        TVectorD eigenValues;
-        TMatrixD eigenVectors = fCurrentCov.EigenVectors(eigenValues);
-
-        // Make the eigenValues positive.  Negative values are OK by symmetry,
-        // but make positive so the square-root can be taken.
-        double eigenSum = 0.0;
-        for (int i=0; i<fLastPoint.size(); ++i) {
-            eigenSum += std::abs(eigenValues(i));
-            if (eigenValues(i) < 0) eigenValues(i) = -eigenValues(i);
-            double sigma = std::sqrt(eigenValues(i));
-            if (sigma > 1.0-fMaxCorrelation) continue;
-            sigma = 1.0-fMaxCorrelation;
-            if (sigma < 1E-7) sigma = 1E-7; // Protect against numeric error
-            eigenValues(i) = sigma*sigma;
-        }
-
-        // Copy into the decomposition.  Make sure the diagonal is positive
-        // and reverse the vector if not (the direction is symmetric).
-        for (int i=0; i<fLastPoint.size(); ++i) {
-            double rms = std::sqrt(eigenValues(i));
-            if (eigenVectors(i,i) < 0.0) rms = -rms;
-            for (int j=0; j<fLastPoint.size(); ++j) {
-                fDecomposition(j,i) = rms*eigenVectors(i,j);
+#ifndef MCMC_SKIP_EIGENVALUE_DECOMPOSITION
+        /// Decompose the covariance using Eigenvalue decomposition.  This is
+        /// more robust than Cholesky decomposition because it doesn't fail
+        /// when the matrix is not positive definite.  When an eigenvalue is
+        /// negative, the covariance was not positive definite.  This is
+        /// managed by making sure that the decomposition is adjusted so the
+        /// eigenvalues are never less than zero.
+        TMatrixDSym conditioned(fLastPoint.size());
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            for (std::size_t j=i; j<fLastPoint.size(); ++j) {
+                conditioned(j,i) = conditioned(i,j) = fCurrentCov(i,j);
             }
         }
 
-        if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
-            fDecomposition.Print();
+        // The fast option didn't work, so use eigen value decomposition.
+        // This will rotate to the best basis, but is slow.
+        TMatrixDSymEigen makeEigenVectors(conditioned);
+        TMatrixD eigenVectors(makeEigenVectors.GetEigenVectors());
+        TVectorD eigenValues(makeEigenVectors.GetEigenValues());
+
+        // Make the eigenValues positive.  Negative values are OK by symmetry,
+        // but make positive so the square-root can be taken.  Also check that
+        // the eigenvalues don't get too small (protects against losing a
+        // dimension).
+        double eigenSum = 0.0;
+        MCMC_DEBUG(1) << "Eigenvalues: ";
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            MCMC_DEBUG(1) << eigenValues(i);
+            if (i<fLastPoint.size()-1) MCMC_DEBUG(1) << ", ";
+            if ((i%6) == 5) MCMC_DEBUG(1) << std::endl << "    ";
+            if (eigenValues(i) < 0.0) continue;
+            eigenSum += eigenValues(i);
+        }
+        MCMC_DEBUG(1) << std::endl;
+        MCMC_DEBUG(1) << "Sum of eigenvalues: " << eigenSum << std::endl;
+
+        // Determine the minimum variance along any axis.  This is set using
+        // the maximum allowed correlation and the magnitude of the first
+        // (i.e. maximum) eigenvalue.  The correlation between two
+        // eigenvectors is one minus the ratio of the eigenvalues.
+        double minAxis = 1.0-fMaxCorrelation;
+        if (minAxis < minVar) minAxis = minVar;
+        minAxis = minAxis*eigenValues(0);
+
+        // Copy into the decomposition and use the eigenvalue to adjust the
+        // magnitude of the eigenvector to be equal to the RMS along this
+        // direction.  The decomposion is a transpose of the eigenvector
+        // matrix so that the resulting matrix can be used in the same way as
+        // the Cholesky decmposition.
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            // This is where negative eigenvalues are managed.  The minAxis
+            // value is always greater than zero.
+            double rms = std::max(minAxis,eigenValues(i));
+            rms = std::sqrt(rms);
+            for (std::size_t j=0; j<fLastPoint.size(); ++j) {
+                // Notice that the elements are being transposed!
+                fDecomposition(i,j) = rms*eigenVectors(j,i);
+            }
         }
 
+        // At high debug levels print all of the eigenvalues and eigenvectors.
+        if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
+            for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+                std::cout << eigenValues(i) << " --";
+                for (std::size_t j = 0; j <fLastPoint.size(); ++j) {
+                    std::cout << " " << eigenVectors(j,i);
+                }
+                std::cout << std::endl;
+            }
+        }
+
+        MCMC_DEBUG(1) << "   Sum of eigen values: " << eigenSum << std::endl;
+
+        // Make sure there were positive eigenvalues.  The only way that isn't
+        // true seems to be when the decomposition failed and all the
+        // eigenValues are zero.
         if (eigenSum > 1E-6) return;
+
+        MCMC_DEBUG(1) << "Eigenvalue decomposition failed" << std::endl;
+#endif
+
+        // We are in serious trouble because the covariance wasn't positive
+        // definite causing Cholesky decomposition to faile, and none of the
+        // eigen values were positive (mathematically, that can't be true, but
+        // can happen due to numeric error build up).  Try reducing the
+        // correlations and increasing the variances in steps.  This is a last
+        // ditch effort!  If this fails, the covariance matrix will be reset
+        // to the initial value.
+
+        // Set the amount to increast the variances by at each trial.
+        double step = std::numeric_limits<Parameter>::epsilon();
+        for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+            step = std::max(step,fCurrentCov(i,i));
+        }
+        step *= 1E-4;
+
+        double dec = 1.0;   // The amount to decrease the correlation by.
+        double total = 1.0; // The total decrease in the correlation.
+        for (int trial = 0; trial<10; ++trial) {
+            dec *= 0.84; // about sqrt(sqrt(2)), but value is not very important
+            total *= dec;
+            MCMC_DEBUG(1) << "Reducing correlations by " << total
+                          << " and increasing variances by " << step
+                          << std::endl;
+            for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+                fCurrentCov(i,i) += step;
+                for (std::size_t j=i+1; j<fLastPoint.size(); ++j) {
+                    fCurrentCov(i,j) = fCurrentCov(j,i) = dec*fCurrentCov(i,j);
+                }
+            }
+            // Try the decomposition again.  This will work if the matrix has
+            // become positive definite.
+            TDecompChol chol3(fCurrentCov);
+            if (chol3.Decompose()) {
+                MCMC_DEBUG(1) << "Correlation matrix was decomposed in"
+                              << " emergency trial " << trial
+                              << std::endl;
+                fDecomposition = chol3.GetU();
+                if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
+                    fDecomposition.Print();
+                }
+                return;
+            }
+        }
 
         // If this is attempting to work with the user provided correlation
         // matrix after a reset, then throw.  This will happen at the very
@@ -886,8 +1025,7 @@ public:
                 "Decomposition of user correlations failed");
         }
 
-        // Something is going very wrong, so reset the Proposal.  This
-        // probably won't work, but it pays to try.
+        // Something is has gone very wrong, so reset the Proposal.
         ResetProposal();
     }
 
@@ -958,6 +1096,7 @@ public:
                 = c->correlation*std::sqrt(v1)*std::sqrt(v2);
         }
 
+        // Save the trace of the initial covariance
         fSigmaTrace = GetCovarianceTrace();
 
         // Set a default window to average the covariance over.  This
@@ -966,14 +1105,14 @@ public:
         // errors if the is overly large.  If the current window is less than
         // minWindow, then it's not initialized or the user is asking for a
         // silly value, and "we know better".
-        int minWindow = 1000;
+        int minWindow = 100 + 4*fLastPoint.size();
         if (fCovarianceWindow < minWindow) {
             fCovarianceWindow = fLastPoint.size();
             fCovarianceWindow *= fLastPoint.size();
             fCovarianceWindow *= fLastPoint.size();
             fCovarianceWindow += minWindow;
-            double r = std::numeric_limits<double>::epsilon();
-            fCovarianceWindow = std::max(fCovarianceWindow,std::sqrt(1.0/r));
+            double r = std::numeric_limits<Parameter>::epsilon();
+            fCovarianceWindow = std::min(fCovarianceWindow,std::sqrt(1.0/r));
         }
         // After reseting, erase the acceptance history.
         if (fTargetAcceptance < 0.0) {
@@ -1041,13 +1180,17 @@ public:
             --elem;
             tree->GetEntry(elem);
             if (fSaveCovariance.size() != covSize) {
-                MCMC_DEBUG(0) << "Covariance not found at entry " << elem
+                MCMC_DEBUG(2) << "Covariance not found at entry " << elem
                               << "/" << entries
                               << std::endl;
                 continue;
             }
             break;
         }
+
+        MCMC_DEBUG(1) << "Chain state restored from entry "
+                      << elem << "/" << entries
+                      << std::endl;
 
         fTrials = fSaveTrials;
         fSuccesses = fSaveSuccesses;
@@ -1073,6 +1216,7 @@ public:
                 ++cov;
             }
         }
+        fSigmaTrace = GetCovarianceTrace();
         fCovarianceTrials = fSaveCovarianceTrials;
 
         // Reset the branch addresses.
@@ -1087,6 +1231,14 @@ public:
         tree->SetBranchAddress("AdaptiveCovariance",NULL);
         tree->SetBranchAddress("AdaptiveCovarianceTrace",NULL);
         tree->SetBranchAddress("AdaptiveCovarianceTrials",NULL);
+
+        MCMC_DEBUG(1) << "Restored state"
+                      << " T: " << fTrials
+                      << " S: " << fSuccesses
+                      << " A: " << fAcceptance
+                      << " Sig: " << fSigma
+                      << " Trace: " << GetCovarianceTrace()
+                      << std::endl;
 
         // Now update the proposal.
         UpdateProposal();
@@ -1210,7 +1362,7 @@ private:
         // Make a quick check to see if the point moved.  This gets it right
         // more than 99.9% of the time (i.e. it's Good Enough (tm)).
         bool accepted = false;
-        if (value != fLastValue || current[1] != fLastPoint[1]) accepted = true;
+        if (value != fLastValue || current[0] != fLastPoint[0]) accepted = true;
 
         // Track the total number of successes.
         if (accepted) ++fSuccesses;
@@ -1221,16 +1373,42 @@ private:
         fAcceptance /= fAcceptanceTrials + 1.0;
         fAcceptanceTrials = std::min(fAcceptanceWindow,fAcceptanceTrials+1.0);
 
+        // Update the rigidity based on how close the acceptance is to the
+        // target acceptance.  If the acceptance is close to the target
+        // acceptance, then increase the rigidity by a little.  If the
+        // acceptance is far, then decrease the acceptance.  The acceptance
+        // sigma is the fractional standard deviation of a binomial
+        // distribution with fAcceptanceWindow samples.
+        double acceptanceSigma = fTargetAcceptance*(1.0-fTargetAcceptance);
+        acceptanceSigma = std::sqrt(acceptanceSigma/fAcceptanceWindow);
+        if (std::abs(fAcceptance-fTargetAcceptance) < acceptanceSigma) {
+            // Within one standard deviation of the target acceptance, so
+            // increase the rigidity.
+            fAcceptanceRigidity
+                += 0.5*fAcceptanceRigidity/fAcceptanceWindow;
+            fAcceptanceRigidity = std::min(200.0,fAcceptanceRigidity);
+        }
+        if (std::abs(fAcceptance-fTargetAcceptance) > 4.0*acceptanceSigma) {
+            // More than for standard deviations from the target acceptance,
+            // so decrease the rigidity.
+            fAcceptanceRigidity
+                -= 1.618*0.5*fAcceptanceRigidity/fAcceptanceWindow;
+            fAcceptanceRigidity = std::max(2.0,fAcceptanceRigidity);
+        }
+
         // Update the scale for the proposal step.  If the acceptance is to
-        // small, then the scale should be reduced.  If the acceptance is to
-        // large, then the scale should be increase.  This is set so that if
-        // the ratio of measured acceptance to the target acceptance is one,
-        // then the value of fSigma will not change.  The exponent is chosen
-        // to control how quickly the fSigma value will be changed.w
-        fSigma *=
-            std::pow(fAcceptance/fTargetAcceptance,
-                     std::min(1.0/500.0,
-                              1.0/(fAcceptanceRigidity*fAcceptanceWindow)));
+        // small, then the scale will be reduced.  If the acceptance is to
+        // large, then the scale will be increased.  If the ratio of measured
+        // acceptance to the target acceptance is one, then the value of
+        // fSigma will not change.  A larger rigidity means that the fSigma
+        // value will change more slowly, and if the rigidity gets too large
+        // the fSigma value is fixed.
+        if (fAcceptanceRigidity < 100.0) {
+            fSigma *=
+                std::pow(fAcceptance/fTargetAcceptance,
+                         std::min(1.0/500.0,
+                                  1.0/(fAcceptanceRigidity*fAcceptanceWindow)));
+        }
 
         // Update the estimate of the central value.  This is simply a running
         // average of the position of the points in the posterior.
@@ -1265,11 +1443,6 @@ private:
         // Periodically change how the proposal is updated based on the
         // current estimate of the covariance.
         if (accepted && (--fNextUpdate)<1) {
-            double maxUp = current.size()*current.size();
-            double up = 0.5*fSuccesses;
-            // This can be numerically simplified, but the calculation becomes
-            // less numerically stable.
-            fNextUpdate = fAcceptanceWindow + maxUp - maxUp/(up+1.0);
             UpdateProposal();
         }
 
@@ -1400,7 +1573,7 @@ private:
 
 // MIT License
 
-// Copyright (c) 2017-2020 Clark McGrew
+// Copyright (c) 2017-2022 Clark McGrew
 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal

@@ -3,6 +3,7 @@
 
 #include <TMatrixD.h>
 #include <TVectorD.h>
+#include <cmath>
 
 // A dummy log likelihood for testing.  This is an example, but don't
 // slavishly copy it (or you will be sorry!).  This is a quadratic.  The
@@ -74,11 +75,13 @@ public:
                 // Choose a correlation based on the variables.  The matrix
                 // forms and "X" with large correlation along the crossing
                 // diagonal.
-#define VERY_CORRELATED 0.999
+#define VERY_CORRELATED 0.99
 #ifdef VERY_CORRELATED
 #define SET_CORRELATION
 #warning Using very correlated correlations with VERY_CORRELATED
                 if ((i+j) == GetDim()-1) {
+                    int d = i-j;
+                    if (std::abs(d) < GetDim()-1) continue;
                     Covariance(i,j)
                         = VERY_CORRELATED*sig1*sig2*(j - i)/(GetDim()-1.0);
                 }

@@ -82,7 +82,7 @@ void SimpleMCMC(int trials,
 #undef USE_THIS_PROPOSAL
     // Create the MCMC object and get the likelihood.  Probably best for
     // everything except debugging the likelihood with SKIP_MCMC.
-    TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
+    TSimpleMCMC<TDummyLogLikelihood> mcmc(tree,true);
 #endif
 
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();
@@ -94,13 +94,12 @@ void SimpleMCMC(int trials,
     // Set the number of dimensions for the proposal.
     mcmc.GetProposeStep().SetDim(like.GetDim());
 
-#ifdef IMPOSE_CORRELATIONS
+#ifdef IMPOSE_RANDOM_CORRELATIONS
     for (int i=0; i<like.GetDim(); ++i) {
-        double si = std::sqrt(TDummyLogLikelihood::Covariance(i,i));
         for (int j=i+1; j<like.GetDim(); ++j) {
-            double sj = std::sqrt(TDummyLogLikelihood::Covariance(j,j));
-            double c = TDummyLogLikelihood::Covariance(i,j);
-            mcmc.GetProposeStep().SetCorrelation(i,j,c/si/sj);
+            double c = gRandom->Uniform(-0.999,0.999);
+            if (i == 2 && j == 3) c = 1.0/0.0;
+            mcmc.GetProposeStep().SetCorrelation(i,j,c);
         }
     }
 #endif
@@ -170,6 +169,7 @@ void SimpleMCMC(int trials,
 #endif
 
     mcmc.GetProposeStep().SetAcceptanceWindow(2000);
+    mcmc.GetProposeStep().SetCovarianceWindow(100000);
     mcmc.GetProposeStep().SetNextUpdate(2000);
 
     // Run the chain (with output to the tree).

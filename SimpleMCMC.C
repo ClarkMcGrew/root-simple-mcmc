@@ -104,11 +104,27 @@ void SimpleMCMC(int trials,
     }
 #endif
 
+/// Uncomment this to "minimize" the likelihood
+// #define SKIP_MCMC
+
+/// Uncomment this to "scan" the likelihood.  Set the value to the variable to
+/// be scanned.
+#define SCAN_MCMC 1
+
+/// Uncomment this to do a separate burnin stage.  Usually you shouldn't use
+/// this and then skip the first "N" entries of the chain.  "N" is a determined
+/// based on the autocorrelation.
+// #define BURNIN_CHAIN
+
     // Set one of the dimensions to use a uniform proposal over a fixed range.
     // mcmc.GetProposeStep().SetUniform(1,-0.5,0.5);
 
     // Override the target acceptance (this value is for very low dimension).
     // mcmc.GetProposeStep().SetTargetAcceptance(0.44);
+
+#ifdef SCAN_MCMC
+    mcmc.GetProposeStep().SetScanDimension(SCAN_MCMC);
+#endif
 
     // The number of dimensions in the point needs to agree with the number of
     // dimensions in the likelihood.  You can either hard code it, or do like
@@ -131,14 +147,6 @@ void SimpleMCMC(int trials,
     }
 
     int verbosity = 100;
-
-/// Uncomment this to "minimize" the likelihood
-// #define SKIP_MCMC
-
-/// Uncomment this to do a separate burnin stage.  Usually you shouldn't use
-/// this and then skip the first "N" entries of the chain.  "N" is a determined
-/// based on the autocorrelation.
-// #define BURNIN_CHAIN
 
 #if defined(BURNIN_CHAIN) && !defined(SKIP_MCMC)
     // This can be useful for debugging, but isn't good practice.  You should
@@ -186,12 +194,19 @@ void SimpleMCMC(int trials,
                       << std::endl;
         }
 
-#if !defined(SKIP_MCMC)
+#if !defined(SKIP_MCMC) && !defined(SCAN_MCMC)
         // Make a normal MCMC step.
         mcmc.Step();
-#else
+#endif
+#if defined(SKIP_MCMC)
+#warning SKIPPING THE MCMC PART OF THE CHAIN
         // Make a debugging (minimization) step
-        mcmc.Step(true,false);
+        mcmc.Step(true,1);
+#endif
+#if defined(SCAN_MCMC)
+#warning SCANNING THE LIKELIHOOD
+        // Make a debugging (minimization) step
+        mcmc.Step(true,2);
 #endif
     }
     std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"

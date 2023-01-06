@@ -39,28 +39,58 @@ class TProposeAdaptiveStep;
 ///
 ///\code
 /// struct ExampleLogLikelihood {
-///    double operator() (const std::vector<double>& point);
+///    double operator() (const Vector& point);
 /// }
 ///\endcode
 ///
 /// The optional UserProposal template argument must be a struct (or class)
-/// which provides methods declared as:
+/// which provides (at least) these methods:
 ///
 ///\code
 /// struct ExampleProposal {
-///    void operator() (std::vector<double>& proposed,
-///                       const std::vector<double>& previous,
-///                       const double previousValue);
-///    bool RestoreState(TTree* tree);
+///    void operator() (Vector& proposed,
+///                     const Vector& previous,
+///                     const double previousValue);
+///    void InitializeState(const Vector& start, const double startValue);
+///    bool RestoreState(const Vector& previous,
+///                      const double previousValue,
+///                      TTree* tree);
 ///    bool AttachState(TTree* tree);
 ///    bool SaveState();
 ///    bool StateSaved();
 /// }
 ///\endcode
 ///
-/// where proposed is the new proposed point, previous is the last
-/// accepted point, and previousValue is the log Likelihood at the
-/// previous point.
+/// Where the methods must do the following:
+///
+///   - operator () : The output parameter "proposed" must be filled with a
+///        new proposed point. The input parameter "previous" is the last
+///        accepted point. The input parameter "previousValue" is the log
+///        Likelihood at the previous accepted point.
+///
+///   - InitializeState() : Called before the first step.  THIS CAN BE A
+///        NO-OP.
+///
+///   - RestoreState() : The input parameter "previous" is the last accepted
+///        point. The input parameter "previousValue" is the log Likelihood at
+///        the previous accepted point.  The input parameter "tree" is a tree
+///        generated during the last run of the MCMC.  It will contain the
+///        information saved by the last call to SaveState. The last (filled)
+///        entry is the last saved information.  The branch definitions must
+///        match with AttachState().  THIS CAN BE A NO-OP.
+///
+///   - AttachState() : Create the local branches in the tree.  The "tree"
+///        parameter is the tree to get the new branches.  THIS CAN BE A
+///        NO-OP.
+///
+///   - SaveState() : Fill the branch variables.  This should return true if
+///        everything is filled (variables don't need to filled).  This does
+///        not call TTree::Fill since that is done by the caller.  THIS CAN BE
+///        A NO-OP.
+///
+///   - StateSaved() : Called to indicate that the state has been written to
+///        the output tree.  This can be used to zero any branch variables.
+///        THIS CAN BE A NO-OP.
 ///
 /// This can be used in your root macros:
 ///
@@ -290,10 +320,18 @@ public:
     /// are saved to the output.  The first parameter, "save", can be set to
     /// false to save file space but should almost always be true.  The second
     /// parameter, "metropolis", can be used to help debug a complicated
-    /// likelihood, but should almost always be true.  When "metropolis" is
-    /// false, this becomes a very slow method to maximize the likelihood (the
-    /// step is always to more probable).
-    bool Step(bool save=true, bool metropolis=true) {
+    /// likelihood, but should almost always be zero (and not used).
+    ///
+    /// Defined values for "metropolis":
+    ///
+    ///     * 0 : Do a normal metropolis step.
+    ///
+    ///     * 1 : Only take "down hill" steps.  This turns the algorythm into
+    ///           a very slow way to maximize the likelihood..
+    ///
+    ///     * 2 : Accept every step.  This can be used to scan the likelihood.
+    ///
+    bool Step(bool save=true, int metropolis=0) {
         if (fProposed.empty() || fAccepted.empty()) {
             MCMC_ERROR << "Must initialize starting point" << std::endl;
             throw std::invalid_argument("Uninitialized starting point");
@@ -314,6 +352,18 @@ public:
         // been cached.
         fProposedLogLikelihood = GetLogLikelihoodValue(fProposed);
 
+        /// This is when all steps should be accepted.  This can be used to
+        /// force calculation of the likelihood at a cloud of points.
+        if (metropolis == 2) {
+            std::cout << "Scanning step" << std::endl;
+            // Always keep the new step.
+            std::copy(fProposed.begin(), fProposed.end(), fAccepted.begin());
+            fAcceptedLogLikelihood = fProposedLogLikelihood;
+            // Check to see if it gest written.
+            if (save) SaveStep(false);
+            return true;
+        }
+
         // Extremely negative log likelihoods are treated as being zero. In
         // practice, zero probability is flagged by a non finite value
         // (e.g. inf, -inf, or nan), or by a log likelihood of less than
@@ -332,16 +382,15 @@ public:
             // If the metropolis method parameter is false, then don't apply
             // the Metropolis algorithm and only take steps that increase the
             // probability.  Setting metropolis to false turns this into an
-            // inefficient maximum likelihood fitter.  Setting this to false
-            // can help test complicated likelihoods, but it should almost
-            // always be true.
-            if (!metropolis) return false;
+            // inefficient maximum likelihood fitter and can help test
+            // complicated likelihoods, but it should almost always be true.
+            if (metropolis == 1) return false;
 
             // The new point is less probable than the accepted point.  Apply
             // the Metropolis-Hastings condition to see if the step should be
             // made.  This is using the Metropolis special case of the
             // Metropolis-Hastings algorithm and depends on the proposal being
-            // a symmetric function (like a Gaussian).
+            // a symetric function (like a Gaussian).
             double trial = std::log(gRandom->Uniform());
             if (delta < trial) {
                 // The new step should be rejected, so save the old step.
@@ -353,8 +402,8 @@ public:
         }
 
         // If this is being used as an (inefficient) minimization algorithm,
-        // print that a new step when one is found.
-        if (!metropolis) {
+        // print the new step when one is found.
+        if (metropolis == 1) {
             static int localCount = 0;
             MCMC_DEBUG(1) << localCount
                           << " L: "   << fProposedLogLikelihood;
@@ -492,6 +541,9 @@ struct TProposeSimpleStep {
 /// frequently) It is valid long as the posterior is not to badly behaved
 /// (e.g. more or less Gaussian).  If the posterior is very non Gaussian it
 /// can become much less efficient.
+///
+/// Methods:
+///
 class TProposeAdaptiveStep {
 public:
     TProposeAdaptiveStep() :
@@ -499,7 +551,8 @@ public:
         fTrials(0), fSuccesses(0), fNextUpdate(-1),
         fAcceptance(0.0), fAcceptanceTrials(0),
         fAcceptanceWindow(-1), fAcceptanceRigidity(2.0),
-        fTargetAcceptance(-1), fSigma(0.0), fStateInitialized(false) {
+        fTargetAcceptance(-1), fSigma(0.0), fStateInitialized(false),
+        fScanDimension(-1) {
         fMaxCorrelation = std::numeric_limits<Parameter>::epsilon();
         fMaxCorrelation = 1.0 - std::sqrt(fMaxCorrelation);
     }
@@ -514,6 +567,32 @@ public:
             MCMC_ERROR << "Proposal and current vectors must be same size."
                        << std::endl;
             throw std::logic_error("Proposal and current length mismatch");
+        }
+
+        /// If the "scan" variable is set, then only change that variable.
+        /// This can be used to check the value of the likelihood versus the
+        /// scan variable.  This does not update the proposal internal
+        /// information.  It will scan the variable around the current central
+        /// point.
+        int scan = fScanDimension;
+        if (scan >= 0 && scan < (int) proposal.size()) {
+            std::copy(current.begin(), current.end(), proposal.begin());
+            // Make the scan proposal.
+            if (fProposalType[scan].type == 1) {
+                // Make a uniform proposal.
+                proposal[scan] = gRandom->Uniform(fProposalType[scan].param1,
+                                                  fProposalType[scan].param2);
+                return;
+            }
+            // Make a Gaussian proposal around the initial value.
+            double sigma = 1.0;
+            if (fProposalType[scan].param1>0) {
+                sigma = std::sqrt(fProposalType[scan].param1);
+            }
+            double r = gRandom->Gaus(fCentralPoint[scan],sigma);
+            proposal[scan] = r;
+            std::cout << "propose " << r << " for " << scan << std::endl;
+            return;
         }
 
         UpdateState(current,value);
@@ -572,6 +651,19 @@ public:
         fProposalType.resize(dim);
     }
     int GetDim() const {return fLastPoint.size();}
+
+    /// Set the dimension to be scanned (only use for debugging the likelihood)
+    void SetScanDimension(int dim) {
+        if (fLastPoint.empty()) {
+            // Apply a sanity check.  This MUST NOT be true.
+            MCMC_ERROR << "Dimensionality is not set."
+                       << std::endl;
+            return;
+        }
+        if (dim < 0) fScanDimension = -1;
+        else if (dim >= (int) fLastPoint.size()) fScanDimension = -1;
+        else fScanDimension = dim;
+    }
 
     /// Set the proposal function for a particular dimension to be uniform.
     void SetUniform(int dim, double minimum, double maximum) {
@@ -1569,6 +1661,12 @@ private:
 
     // Keep track of whether we've actually been called.
     bool fStateInitialized;
+
+    // A dimension to "scan" this generates a cloud of points with all other
+    // parameters fixed and the "scan" parameter fluctuated around the central
+    // point.  If the value is outside the range of parameter indices, it's
+    // skipped (it must be between 0 and dim to scan).
+    int fScanDimension;
 };
 
 // MIT License

@@ -782,7 +782,8 @@ public:
     /// is provided as a factor of the acceptance window.  When the rigidity
     /// is more than 100, the step size is fixed and will not be adapted based
     /// on the acceptance rate.  The value can be as small as 0.5, but typical
-    /// values should be around 2.0 or greater.
+    /// values should be around 2.0 or greater.  If the acceptance rigidity is
+    /// set to a negative value, the step size will be fixed.
     void SetAcceptanceRigidity(double r) {fAcceptanceRigidity = r;}
     double GetAcceptanceRigidity() const {return fAcceptanceRigidity;}
 
@@ -1468,24 +1469,26 @@ private:
         // Update the rigidity based on how close the acceptance is to the
         // target acceptance.  If the acceptance is close to the target
         // acceptance, then increase the rigidity by a little.  If the
-        // acceptance is far, then decrease the acceptance.  The acceptance
-        // sigma is the fractional standard deviation of a binomial
-        // distribution with fAcceptanceWindow samples.
-        double acceptanceSigma = fTargetAcceptance*(1.0-fTargetAcceptance);
-        acceptanceSigma = std::sqrt(acceptanceSigma/fAcceptanceWindow);
-        if (std::abs(fAcceptance-fTargetAcceptance) < acceptanceSigma) {
-            // Within one standard deviation of the target acceptance, so
-            // increase the rigidity.
-            fAcceptanceRigidity
-                += 0.5*fAcceptanceRigidity/fAcceptanceWindow;
-            fAcceptanceRigidity = std::min(200.0,fAcceptanceRigidity);
-        }
-        if (std::abs(fAcceptance-fTargetAcceptance) > 4.0*acceptanceSigma) {
-            // More than for standard deviations from the target acceptance,
-            // so decrease the rigidity.
-            fAcceptanceRigidity
-                -= 1.618*0.5*fAcceptanceRigidity/fAcceptanceWindow;
-            fAcceptanceRigidity = std::max(2.0,fAcceptanceRigidity);
+        // acceptance is far from the target, then decrease the rigidity.
+        // The acceptance sigma is the fractional standard deviation of a
+        // binomial distribution within fAcceptanceWindow samples.
+        if (fAcceptanceRigidity < 500.0 && fAcceptanceRigidity > 0.0) {
+            double acceptanceSigma = fTargetAcceptance*(1.0-fTargetAcceptance);
+            acceptanceSigma = std::sqrt(acceptanceSigma/fAcceptanceWindow);
+            if (std::abs(fAcceptance-fTargetAcceptance)<acceptanceSigma) {
+                // Within one standard deviation of the target acceptance, so
+                // increase the rigidity.
+                fAcceptanceRigidity
+                    += 0.5*fAcceptanceRigidity/fAcceptanceWindow;
+                fAcceptanceRigidity = std::min(200.0,fAcceptanceRigidity);
+            }
+            if (std::abs(fAcceptance-fTargetAcceptance)>4.0*acceptanceSigma) {
+                // More than four standard deviations from the target
+                // acceptance, so decrease the rigidity.
+                fAcceptanceRigidity
+                    -= 1.618*0.5*fAcceptanceRigidity/fAcceptanceWindow;
+                fAcceptanceRigidity = std::max(2.0,fAcceptanceRigidity);
+            }
         }
 
         // Update the scale for the proposal step.  If the acceptance is to
@@ -1495,7 +1498,7 @@ private:
         // fSigma will not change.  A larger rigidity means that the fSigma
         // value will change more slowly, and if the rigidity gets too large
         // the fSigma value is fixed.
-        if (fAcceptanceRigidity < 100.0) {
+        if (fAcceptanceRigidity > 0 && fAcceptanceRigidity < 100.0) {
             fSigma *=
                 std::pow(fAcceptance/fTargetAcceptance,
                          std::min(1.0/500.0,

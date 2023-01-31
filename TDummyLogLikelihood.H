@@ -60,7 +60,7 @@ public:
                 // the one you want to try).
 
                 // Choose a random correlation
-// #define RANDOM_CORRELATION 0.9
+// #define RANDOM_CORRELATION 0.99
 #ifdef RANDOM_CORRELATION
 #define SET_CORRELATION
 #warning Using random correlations with RANDOM_CORRELATION
@@ -75,7 +75,7 @@ public:
                 // Choose a correlation based on the variables.  The matrix
                 // forms and "X" with large correlation along the crossing
                 // diagonal.
-#define VERY_CORRELATED 0.99
+#define VERY_CORRELATED 0.999999
 #ifdef VERY_CORRELATED
 #define SET_CORRELATION
 #warning Using very correlated correlations with VERY_CORRELATED
@@ -124,7 +124,9 @@ public:
                 }
             }
             if (positiveDefinite) break;
-            std::cout << "Not positive definite" << std::endl;
+            std::cout << "TDummyLogLikelihood::"
+                      << " Input correlations are positive definite"
+                      << std::endl;
             reduction *= 0.9;
             for (std::size_t i = 0; i<GetDim(); ++i) {
                 for (std::size_t j = i+1; j<GetDim(); ++j) {

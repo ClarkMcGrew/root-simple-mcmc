@@ -109,7 +109,7 @@ void SimpleMCMC(int trials,
 
 /// Uncomment this to "scan" the likelihood.  Set the value to the variable to
 /// be scanned.
-#define SCAN_MCMC 1
+// #define SCAN_MCMC 1
 
 /// Uncomment this to do a separate burnin stage.  Usually you shouldn't use
 /// this and then skip the first "N" entries of the chain.  "N" is a determined
@@ -146,12 +146,16 @@ void SimpleMCMC(int trials,
         std::cout << "State Restored" << std::endl;
     }
 
-    int verbosity = 100;
+    int verbosity = 1000;
 
 #if defined(BURNIN_CHAIN) && !defined(SKIP_MCMC)
     // This can be useful for debugging, but isn't good practice.  You should
     // be looking at the burn-in steps to make sure the burn-in is complete.
     std::cout << "Start burn-in chain" << std::endl;
+
+    mcmc.GetProposeStep().SetAcceptanceWindow(2000);
+    mcmc.GetProposeStep().SetCovarianceWindow(100000);
+    mcmc.GetProposeStep().SetNextUpdate(2000);
 
     int burnin = 10000+10*p.size();
     // Burnin the chain (don't save the output)
@@ -174,11 +178,17 @@ void SimpleMCMC(int trials,
     }
     mcmc.GetProposeStep().UpdateProposal();
     std::cout << "Finished second burn-in chain" << std::endl;
-#endif
 
+    // Freeze the step size.
+    mcmc.GetProposeStep().SetAcceptanceRigidity(-1);
     mcmc.GetProposeStep().SetAcceptanceWindow(2000);
-    mcmc.GetProposeStep().SetCovarianceWindow(100000);
+    mcmc.GetProposeStep().SetCovarianceWindow(10000);
+    mcmc.GetProposeStep().SetNextUpdate(5000);
+#else
+    mcmc.GetProposeStep().SetAcceptanceWindow(2000);
+    mcmc.GetProposeStep().SetCovarianceWindow(10000);
     mcmc.GetProposeStep().SetNextUpdate(2000);
+#endif
 
     // Run the chain (with output to the tree).
     for (int i=0; i<trials; ++i) {

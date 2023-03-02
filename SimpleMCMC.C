@@ -201,6 +201,7 @@ void SimpleMCMC(int trials,
                       << " S: " << mcmc.GetProposeStep().GetSigma()
                       << " T: "
                       << mcmc.GetProposeStep().GetCovarianceTrace()
+                      << " RMS: " << mcmc.GetStepRMS()
                       << std::endl;
         }
 

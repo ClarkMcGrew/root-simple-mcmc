@@ -195,6 +195,8 @@ public:
             fTree->Branch("LogLikelihood",&fAcceptedLogLikelihood);
             fTree->Branch("TotalSteps", &fTotalSteps);
             fTree->Branch("Accepted",&fAccepted);
+            fTree->Branch("Accepted",&fAccepted);
+            fTree->Branch("StepRMS",&fStepRMS);
             if (saveStep) {
                 MCMC_DEBUG(0) << "TSimpleMCMC: Saving the trial steps."
                               << std::endl;
@@ -204,6 +206,9 @@ public:
         fLogLikelihoodCount = 0;
         fTotalSteps = 0;
         fProposeStep.AttachState(fTree);
+        fStepRMS = 0.0;
+        fStepRMSTrials = 0;
+        fStepRMSWindow = 1000;
     }
 
     /// Get a reference to the object that will propose the step.  The
@@ -341,10 +346,22 @@ public:
 
         fProposeStep(fProposed,fAccepted,fAcceptedLogLikelihood);
 
-        // Only cache the trial step when tree is being saved.
-        if (save) {
+        // Only cache the trial step when it's being saved in the tree, or the
+        // step RMS is being calculated.
+        if (save || fStepRMSWindow > 0) {
+            double sqr = 0.0;
             for (std::size_t i = 0; i < fProposed.size(); ++i) {
                 fTrialStep[i] = fProposed[i] - fAccepted[i];
+                sqr += fTrialStep[i] * fTrialStep[i];
+            }
+            if (fStepRMSWindow > 0) {
+                // Update the step RMS over the last "fStepRMSWindow" trials.
+                double ms = fStepRMS*fStepRMS;
+                ms *= fStepRMSTrials;
+                ms += sqr;
+                ms /= fStepRMSTrials + 1.0;
+                fStepRMSTrials = std::min(fStepRMSWindow,fStepRMSTrials+1);
+                fStepRMS = std::sqrt(ms);
             }
         }
 
@@ -437,6 +454,12 @@ public:
     /// Get the likelihood at the most recently proposed point.
     double GetProposedLogLikelihood() const {return fProposedLogLikelihood;}
 
+    /// Get the recent step length RMS.
+    double GetStepRMS() const { return fStepRMS;}
+
+    /// Set the number of trials to use when calculating the step RMS.
+    void SetStepRMSWindow(int n) {fStepRMSWindow = n;}
+
     /// Get the most recently proposed point.
     const Vector& GetProposed() const {return fProposed;}
 
@@ -491,6 +514,16 @@ protected:
     /// The proposed point for the most recent step (This may be the same as
     /// the accepted point).
     Vector fProposed;
+
+    /// The RMS of the proposed step length.  This will be averaged over
+    /// recent steps.
+    double fStepRMS;
+
+    /// The number of trials currently used to estimate the step length RMS
+    int fStepRMSTrials;
+
+    /// The maximum number of trials to be used to estimiate the step length RMS
+    int fStepRMSWindow;
 
     /// The likelihood at the last proposed point.
     double fProposedLogLikelihood;

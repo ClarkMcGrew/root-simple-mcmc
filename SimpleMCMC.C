@@ -2,6 +2,16 @@
 
 #undef LIKELIHOOD_DEFINED
 
+// #define USE_HORRIFIC_LIKELIHOOD
+#ifndef LIKELIHOOD_DEFINED
+#ifdef USE_HORRIFIC_LIKELIHOOD
+#define LIKELIHOOD_DEFINED
+#warning Using HORRIFIC likelihood
+#include "THorrificLogLikelihood.H"
+typedef THorrificLogLikelihood TDummyLogLikelihood;
+#endif
+#endif
+
 // #define USE_HARD_LIKELIHOOD
 #ifndef LIKELIHOOD_DEFINED
 #ifdef USE_HARD_LIKELIHOOD
@@ -32,7 +42,7 @@ typedef TASymLogLikelihood TDummyLogLikelihood;
 
 #include <sstream>
 
-void SimpleMCMC(int trials,
+void SimpleMCMC(int cycles, int steps,
                 const char* outputName,
                 const char* restoreName) {
     std::cout << "Simple MCMC Loaded" << std::endl;
@@ -114,7 +124,7 @@ void SimpleMCMC(int trials,
 /// Uncomment this to do a separate burnin stage.  Usually you shouldn't use
 /// this and then skip the first "N" entries of the chain.  "N" is a determined
 /// based on the autocorrelation.
-// #define BURNIN_CHAIN
+#define BURNIN_CHAIN
 
     // Set one of the dimensions to use a uniform proposal over a fixed range.
     // mcmc.GetProposeStep().SetUniform(1,-0.5,0.5);
@@ -132,11 +142,11 @@ void SimpleMCMC(int trials,
     // dimensions.
     Vector p(like.GetDim());
     // Randomize the starting point
-    for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
+    for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-0.99,0.99);
     // Override p and start near the global minimum for the Rosenbrock function
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(0.50,1.5);
-    // Override p and start at the global minimum for the Rosenbrock function
-    for (std::size_t i=0; i<p.size(); ++i) p[i] = 1.0;
+    // Override p and start at zero.
+    for (std::size_t i=0; i<p.size(); ++i) p[i] = 0.0;
 
     mcmc.Start(p,false);
 
@@ -146,18 +156,22 @@ void SimpleMCMC(int trials,
         std::cout << "State Restored" << std::endl;
     }
 
-    int verbosity = 1000;
+    int verbosity = steps/5;
+    int freezeAfter = 0.1*cycles + 1;
+    freezeAfter = -1;  // Uncomment to never freeze.
 
 #if defined(BURNIN_CHAIN) && !defined(SKIP_MCMC)
     // This can be useful for debugging, but isn't good practice.  You should
     // be looking at the burn-in steps to make sure the burn-in is complete.
     std::cout << "Start burn-in chain" << std::endl;
 
-    mcmc.GetProposeStep().SetAcceptanceWindow(2000);
-    mcmc.GetProposeStep().SetCovarianceWindow(100000);
-    mcmc.GetProposeStep().SetNextUpdate(2000);
+    int aWin = 0.1*steps;
+    if (aWin > 1000) aWin = 1000;
+    if (aWin < 100) aWin = 100;
+    mcmc.GetProposeStep().SetAcceptanceWindow(aWin);
+    mcmc.GetProposeStep().SetCovarianceWindow(steps);
 
-    int burnin = 10000+10*p.size();
+    int burnin = steps;
     // Burnin the chain (don't save the output)
     for (int i=0; i<burnin; ++i) {
         if (i%verbosity == 0) {
@@ -165,60 +179,80 @@ void SimpleMCMC(int trials,
         }
         mcmc.Step(false);
     }
-    mcmc.GetProposeStep().UpdateProposal();
+    mcmc.GetProposeStep().ResetProposal();
     std::cout << "Finished first burn-in chain" << std::endl;
 
-    // Burnin the chain (don't save the output)
-    burnin = 10000+10.0*p.size()*p.size();
-    for (int i=0; i<burnin; ++i) {
-        if (i%verbosity == 0) {
-            std::cout << "Second burn-in " << i << " / " << burnin << std::endl;
-        }
-        mcmc.Step(false);
-    }
-    mcmc.GetProposeStep().UpdateProposal();
-    std::cout << "Finished second burn-in chain" << std::endl;
+    mcmc.GetProposeStep().SetAcceptanceWindow(aWin);
+    mcmc.GetProposeStep().SetCovarianceWindow(2*steps);
+    mcmc.GetProposeStep().SetCovarianceUpdateDeweight(0.5);
 
-    // Freeze the step size.
-    mcmc.GetProposeStep().SetAcceptanceRigidity(-1);
-    mcmc.GetProposeStep().SetAcceptanceWindow(2000);
-    mcmc.GetProposeStep().SetCovarianceWindow(10000);
-    mcmc.GetProposeStep().SetNextUpdate(5000);
-#else
-    mcmc.GetProposeStep().SetAcceptanceWindow(2000);
-    mcmc.GetProposeStep().SetCovarianceWindow(10000);
-    mcmc.GetProposeStep().SetNextUpdate(2000);
+    for (int cycle=0; cycle < 4; ++cycle) {
+        // Burnin the chain (don't save the output)
+        for (int i=0; i<burnin; ++i) {
+            if (i%verbosity == 0) {
+                std::cout << "burn-in " << cycle
+                          << " step " << i << " / " << burnin << std::endl;
+            }
+            mcmc.Step();
+        }
+        mcmc.GetProposeStep().UpdateProposal();
+        std::cout << "Finished burnin chain " << cycle << std::endl;
+    }
 #endif
 
+    // Freeze the step size.
+    mcmc.GetProposeStep().SetAcceptanceWindow(1000);
+    mcmc.GetProposeStep().SetAcceptanceRigidity(2.0);
+    mcmc.GetProposeStep().SetCovarianceWindow(cycles*steps);
+    mcmc.GetProposeStep().SetCovarianceUpdateDeweight(0.20);
+    mcmc.GetProposeStep().SetNextUpdate(1E+9);
+
     // Run the chain (with output to the tree).
-    for (int i=0; i<trials; ++i) {
-        if (i%verbosity == 0) {
-            std::cout << "Trial " << i << " / " << trials
-                      << " A: " << mcmc.GetProposeStep().GetAcceptance()
-                      << "/" << mcmc.GetProposeStep().GetSuccesses()
-                      << " ("<<mcmc.GetProposeStep().GetAcceptanceWindow()
-                      << ":" << mcmc.GetProposeStep().GetNextUpdate() << ")"
-                      << " S: " << mcmc.GetProposeStep().GetSigma()
-                      << " T: "
-                      << mcmc.GetProposeStep().GetCovarianceTrace()
-                      << " RMS: " << mcmc.GetStepRMS()
-                      << std::endl;
-        }
+    int trial = 0;
+    for (int cycle = 0; cycle < cycles; ++cycle) {
+        for (int i=0; i<steps; ++i) {
+            ++trial;
+            if (trial%verbosity == 0) {
+                std::cout << "Trial " << cycle << ": "
+                          << trial << " / " << cycles*steps
+                          << " A: " << mcmc.GetProposeStep().GetAcceptance()
+                          << "/" << mcmc.GetProposeStep().GetSuccesses()
+                          << " ("<<mcmc.GetProposeStep().GetAcceptanceWindow()
+                          << ":" << mcmc.GetProposeStep().GetNextUpdate() << ")"
+                          << " S: " << mcmc.GetProposeStep().GetSigma()
+                          << " T: "
+                          << mcmc.GetProposeStep().GetCovarianceTrace()
+                          << " RMS: " << mcmc.GetStepRMS()
+                          << std::endl;
+            }
 
 #if !defined(SKIP_MCMC) && !defined(SCAN_MCMC)
-        // Make a normal MCMC step.
-        mcmc.Step();
+            // Make a normal MCMC step.
+            mcmc.Step();
 #endif
 #if defined(SKIP_MCMC)
 #warning SKIPPING THE MCMC PART OF THE CHAIN
-        // Make a debugging (minimization) step
-        mcmc.Step(true,1);
+            // Make a debugging (minimization) step
+            mcmc.Step(true,1);
 #endif
 #if defined(SCAN_MCMC)
 #warning SCANNING THE LIKELIHOOD
-        // Make a debugging (minimization) step
-        mcmc.Step(true,2);
+            // Make a debugging (minimization) step
+            mcmc.Step(true,2);
 #endif
+        }
+
+        std::cout << "UPDATE PROPOSAL" << std::endl;
+        mcmc.GetProposeStep().UpdateProposal();
+        if (freezeAfter >= 0 && cycle > freezeAfter) {
+            mcmc.GetProposeStep().SetAcceptanceRigidity(-1);
+            std::cout << "FREEZE STEP SIZE" << std::endl;
+        }
+        else {
+            mcmc.GetProposeStep().SetAcceptanceRigidity(2.0);
+        }
+        mcmc.GetProposeStep().SetCovarianceUpdateDeweight(0.0);
+        mcmc.GetProposeStep().SetNextUpdate(10*steps);
     }
     std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"
               << std::endl;
@@ -242,21 +276,26 @@ void SimpleMCMC(int trials,
 // script and then run it using ./a.out which will produce a file name
 // "SimpleAHMC.root"
 int main(int argc, char **argv) {
-    int trials = 10000;
+    int cycles = 10;
+    int steps = 1000;
     std::string outputName("SimpleMCMC.root");
     char* restoreName = NULL;
 
     if (argc > 1) {
         std::istringstream input(argv[1]);
-        input >> trials;
+        input >> cycles;
     }
     if (argc > 2) {
-        outputName = argv[2];
+        std::istringstream input(argv[2]);
+        input >> steps;
     }
     if (argc > 3) {
-        restoreName = argv[3];
+        outputName = argv[3];
+    }
+    if (argc > 4) {
+        restoreName = argv[4];
     }
 
-    SimpleMCMC(trials,outputName.c_str(),restoreName);
+    SimpleMCMC(cycles,steps,outputName.c_str(),restoreName);
 }
 #endif

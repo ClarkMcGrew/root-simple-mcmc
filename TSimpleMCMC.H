@@ -922,6 +922,15 @@ public:
             if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
                 fDecomposition.Print();
             }
+            MCMC_DEBUG(2) << " Decomposition Diagonal: "
+                          << std::endl;
+            MCMC_DEBUG(2) << "        = ";
+            for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+                MCMC_DEBUG(2) << fDecomposition(i,i);
+                if (i<fLastPoint.size()-1) MCMC_DEBUG(2) << " + ";
+                if (i%6 == 5) MCMC_DEBUG(2) << std::endl << "           ";
+            }
+            MCMC_DEBUG(2) << std::endl;
             return;
         }
         MCMC_DEBUG(1) << "Covariance matrix decomposition failed"
@@ -1031,6 +1040,15 @@ public:
             if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
                 fDecomposition.Print();
             }
+            MCMC_DEBUG(2) << " Decomposition Diagonal: "
+                          << std::endl;
+            MCMC_DEBUG(2) << "        = ";
+            for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+                MCMC_DEBUG(2) << fDecomposition(i,i);
+                if (i<fLastPoint.size()-1) MCMC_DEBUG(2) << " + ";
+                if (i%6 == 5) MCMC_DEBUG(2) << std::endl << "           ";
+            }
+            MCMC_DEBUG(2) << std::endl;
             return;
         }
 
@@ -1120,7 +1138,7 @@ public:
 #endif
 
         // We are in serious trouble because the covariance wasn't positive
-        // definite causing Cholesky decomposition to faile, and none of the
+        // definite causing Cholesky decomposition to failed, and none of the
         // eigen values were positive (mathematically, that can't be true, but
         // can happen due to numeric error build up).  Try reducing the
         // correlations and increasing the variances in steps.  This is a last
@@ -1159,6 +1177,15 @@ public:
                 if (MCMC_DEBUG_LEVEL>1 && fLastPoint.size() < 6) {
                     fDecomposition.Print();
                 }
+                MCMC_DEBUG(2) << " Decomposition Diagonal: "
+                              << std::endl;
+                MCMC_DEBUG(2) << "        = ";
+                for (std::size_t i=0; i<fLastPoint.size(); ++i) {
+                    MCMC_DEBUG(2) << fDecomposition(i,i);
+                    if (i<fLastPoint.size()-1) MCMC_DEBUG(2) << " + ";
+                    if (i%6 == 5) MCMC_DEBUG(2) << std::endl << "           ";
+                }
+                MCMC_DEBUG(2) << std::endl;
                 return;
             }
         }

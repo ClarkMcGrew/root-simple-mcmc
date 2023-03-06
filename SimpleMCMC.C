@@ -184,7 +184,7 @@ void SimpleMCMC(int cycles, int steps,
 
     mcmc.GetProposeStep().SetAcceptanceWindow(aWin);
     mcmc.GetProposeStep().SetCovarianceWindow(2*steps);
-    mcmc.GetProposeStep().SetCovarianceUpdateDeweight(0.5);
+    mcmc.GetProposeStep().SetCovarianceUpdateDeweighting(0.5);
 
     for (int cycle=0; cycle < 4; ++cycle) {
         // Burnin the chain (don't save the output)
@@ -204,7 +204,7 @@ void SimpleMCMC(int cycles, int steps,
     mcmc.GetProposeStep().SetAcceptanceWindow(1000);
     mcmc.GetProposeStep().SetAcceptanceRigidity(2.0);
     mcmc.GetProposeStep().SetCovarianceWindow(cycles*steps);
-    mcmc.GetProposeStep().SetCovarianceUpdateDeweight(0.20);
+    mcmc.GetProposeStep().SetCovarianceUpdateDeweighting(0.20);
     mcmc.GetProposeStep().SetNextUpdate(1E+9);
 
     // Run the chain (with output to the tree).
@@ -251,7 +251,7 @@ void SimpleMCMC(int cycles, int steps,
         else {
             mcmc.GetProposeStep().SetAcceptanceRigidity(2.0);
         }
-        mcmc.GetProposeStep().SetCovarianceUpdateDeweight(0.0);
+        mcmc.GetProposeStep().SetCovarianceUpdateDeweighting(0.0);
         mcmc.GetProposeStep().SetNextUpdate(10*steps);
     }
     std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"

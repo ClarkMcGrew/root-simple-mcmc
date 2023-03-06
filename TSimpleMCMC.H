@@ -785,7 +785,13 @@ public:
     /// is an update.  This lets the new information have more effect on the
     /// covariance, and is mostly useful during burn-in.  After burn-in is
     /// finished the deweighing can (should?) be set to zero.
-    void SetCovarianceUpdateDeweight(double d) {fCovarianceDeweight = d;}
+    ///
+    /// The deweighting should be between 0.0 and 1.0.  A zero (0.0)
+    /// deweighting means that the existing covariance is directly used in the
+    /// average.  A deweighting of one (1.0) means that the existing
+    /// covariance is NOT used in the running average.  Larger deweighting
+    /// means that the newly accepted points will have more effect.
+    void SetCovarianceUpdateDeweighting(double d) {fCovarianceDeweight = d;}
 
     /// Get the number of trials used to calculate the covariance.
     double GetCovarianceTrials() const {return fCovarianceTrials;}
@@ -816,8 +822,8 @@ public:
     double GetAcceptanceWindow() const {return fAcceptanceWindow;}
 
     /// Set the amount that the old covariance should be deweighted when there
-    /// is an update.
-    void SetAcceptanceUpdateDeweight(double d) {fAcceptanceDeweight = d;}
+    /// is an update.  See SetCovarianceUpdateDeweighting for more details.
+    void SetAcceptanceUpdateDeweighting(double d) {fAcceptanceDeweight = d;}
 
     /// Set (get) the number of trials until the next proposal update.  This
     /// grows with each successfull update, but can be overridden by this
@@ -881,7 +887,8 @@ public:
 
         // The proposal is being updated, so deweight the current covariance
         // so that the new information weighs more.
-        if (fCovarianceDeweight > 0.0 && fCovarianceDeweight < 1.0) {
+        if (fCovarianceDeweight > 0.0) {
+            if (fCovarianceDeweight > 1.0) fCovarianceDeweight = 1.0;
             double w = 1.0 - fCovarianceDeweight;
             fCovarianceTrials = std::max(1.0,w*fCovarianceTrials);
             fCovarianceTrials = std::min(fCovarianceTrials,w*fCovarianceWindow);
@@ -894,7 +901,8 @@ public:
 
         // The proposal is being updated, so deweight the current acceptance
         // so that the new information weighs more.
-        if (fAcceptanceDeweight > 0.0 && fAcceptanceDeweight < 1.0) {
+        if (fAcceptanceDeweight > 0.0) {
+            if (fAcceptanceDeweight > 1.0) fAcceptanceDeweight = 1.0;
             double w = 1.0 - fAcceptanceDeweight;
             fAcceptanceTrials = std::max(1.0,w*fAcceptanceTrials);
             fAcceptanceTrials = std::min(fAcceptanceTrials,w*fAcceptanceWindow);
@@ -1671,7 +1679,6 @@ private:
     // the posterior is extremely non-Gaussian (e.g. it's a "banana
     // posterior").
     double fCovarianceWindow;
-
 
     // The current decomposition of the covariance.  This is not updated
     // everytime the fCurrentCov estimate changes.  A Cholesky decomposition,

@@ -18,9 +18,13 @@
 
 #define MCMC_ERROR (std::cout <<__FILE__<<":: " << __LINE__ << ": " )
 
+namespace sMCMC {
+    class TProposeGibbsStep;
+};
+
 /// A default for the class to propose the next step.  This implements an
 /// adaptive Gibbs.
-class TProposeGibbsStep {
+class sMCMC::TProposeGibbsStep {
 public:
     TProposeGibbsStep() :
         fLastValue(0.0), fTrials(0), fSuccesses(0), fAcceptanceWindow(-1),

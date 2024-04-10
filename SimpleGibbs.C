@@ -15,7 +15,7 @@ void SimpleMCMC(int trials, int maxEvaluations) {
     TFile *outputFile = new TFile("SimpleGibbs.root","recreate");
     TTree *tree = new TTree("SimpleGibbs","Tree of accepted points");
 #endif
-    sMCMC::TSimpleMCMC<TDummyLogLikelihood,TProposeGibbsStep> mcmc(tree);
+    sMCMC::TSimpleMCMC<TDummyLogLikelihood,sMCMC::TProposeGibbsStep> mcmc(tree);
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();
 
     // Initialize the likelihood (if you need to).  The dummy likelihood

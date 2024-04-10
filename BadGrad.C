@@ -16,8 +16,8 @@ public:
 
     // Calculate the log(likelihood).  The dummy likelihood is a Gaussian
     // (with covariance) centered at zero.  The covariance is set in Init()
-    // (below).  
-    double operator()(const Vector& point)  const {
+    // (below).
+    double operator()(const sMCMC::Vector& point)  const {
         double logLikelihood = 0.0;
 
         for (std::size_t i = 0; i<GetDim(); ++i) {
@@ -29,8 +29,8 @@ public:
         return logLikelihood;
     }
 
-    // Note that this needs to be the grad(log(Likelihood)).  
-    bool operator() (Vector& g, const Vector& p) {
+    // Note that this needs to be the grad(log(Likelihood)).
+    bool operator() (sMCMC::Vector& g, const sMCMC::Vector& p) {
         for (int i=0; i<p.size(); ++i) {
             g[i] = 0.0;
             for (int j=0; j<p.size(); ++j) {
@@ -62,13 +62,13 @@ public:
 #ifdef RANDOM_CORRELATION
                 Covariance(i,j) = gRandom->Uniform(-0.999,0.999)*sig1*sig2;
 #endif
-                
+
                 // Choose no correlation
 #ifdef NO_CORRELATION
                 Covariance(i,j) = 0.0;
 #endif
 
-                // Choose a correlation based on the variables.  Neighbors are 
+                // Choose a correlation based on the variables.  Neighbors are
                 // not correlated, but there is more correlation as the
                 // variables are further apart.
 #define VERY_CORRELATED
@@ -77,7 +77,7 @@ public:
                     Covariance(i,j) = 0.900*sig1*sig2*(j - i)/(GetDim()-1.0);
                 }
 #endif
-                
+
                 Covariance(j,i) = Covariance(i,j);
             }
         }
@@ -173,19 +173,19 @@ void BadGrad(int maxEvals=-1) {
     TFile *outputFile = new TFile("badGrad.root","recreate");
     TTree *tree = new TTree("BadGrad","Tree of accepted pqoints");
 #endif
-    TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
+    sMCMC::TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
     // TSimpleHMC<TDummyLogLikelihood> hmc(tree);
     TDummyLogLikelihood& like = hmc.GetLogLikelihood();
 
     // Initialize the likelihood (if you need to).  The dummy likelihood
     // setups a covariance to make the PDF more interesting.
     like.Init();
-    
+
     // The number of dimensions in the point needs to agree with the number of
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
-    Vector p(like.GetDim());
+    sMCMC::Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
 
     hmc.Start(p,false);

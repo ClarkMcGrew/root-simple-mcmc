@@ -23,7 +23,7 @@ public:
     std::size_t GetDim() const {return 75;}
 
     // Calculate the log(likelihood)
-    double operator()(const Vector& point)  const {
+    double operator()(const sMCMC::Vector& point)  const {
         const double sigma = 0.01;
         double logLikelihood = 0.0;
 
@@ -38,7 +38,7 @@ public:
     }
 
     // Note that this should be the grad(log(Likelihood)).
-    bool operator() (Vector& g, const Vector& p) {
+    bool operator() (sMCMC::Vector& g, const sMCMC::Vector& p) {
         return false;
     }
 

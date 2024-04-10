@@ -25,9 +25,9 @@ void SimpleHMC(int trials, int maxEvals=-1) {
 
 #define FORCE_TRUE_GRADIENT
 #ifdef FORCE_TRUE_GRADIENT
-    TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
+    sMCMC::TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
 #else
-    TSimpleHMC<TDummyLogLikelihood> hmc(tree);
+    sMCMC::TSimpleHMC<TDummyLogLikelihood> hmc(tree);
 #endif
 
     TDummyLogLikelihood& like = hmc.GetLogLikelihood();
@@ -40,7 +40,7 @@ void SimpleHMC(int trials, int maxEvals=-1) {
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
-    Vector p(like.GetDim());
+    sMCMC::Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
     for (std::size_t i=0; i<p.size(); ++i) p[i] = 1.0;
 

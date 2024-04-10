@@ -19,9 +19,9 @@ void SimpleAHMC(int trials, int maxEvals=-1) {
 
 #ifdef FORCE_TRUE_GRADIENT
     // Using the full derivative kind of defeats the purpose of an ahmc.
-    TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
+    sMCMC::TSimpleHMC<TDummyLogLikelihood,TDummyLogLikelihood> hmc(tree);
 #else
-    TSimpleHMC<TDummyLogLikelihood> hmc(tree);
+    sMCMC::TSimpleHMC<TDummyLogLikelihood> hmc(tree);
 #endif
 
     TDummyLogLikelihood& like = hmc.GetLogLikelihood();
@@ -34,7 +34,7 @@ void SimpleAHMC(int trials, int maxEvals=-1) {
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
-    Vector p(like.GetDim());
+    sMCMC::Vector p(like.GetDim());
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-1.0,1.0);
 
     hmc.Start(p,true);

@@ -11,16 +11,6 @@
 #include <TMatrixD.h>
 #include <TVectorD.h>
 
-// Make a typedef for the type used for the function parameter.  The
-// parameter type will usually be a double, but for some problems that might
-// not be a good idea (e.g. uses too much memory, or it's not needed).  This
-// makes it easy to change between the two).
-typedef double Parameter;
-
-// Make a typedef for a vector of the parameters.  This is for the same reason
-// as "Parameter".
-typedef std::vector<Parameter> Vector;
-
 // Define the amount of debugging when running the chain.
 #ifndef HMC_DEBUG_LEVEL
 #define HMC_DEBUG_LEVEL 2
@@ -45,11 +35,26 @@ typedef std::vector<Parameter> Vector;
 #define HMC_ERROR (std::cout <<__FILE__<<":: " << __LINE__ << ": " )
 #endif
 
+namespace sMCMC {
+    // Make a typedef for the type used for the function parameter.  The
+    // parameter type will usually be a double, but for some problems that
+    // might not be a good idea (e.g. uses too much memory, or it's not
+    // needed).  This makes it easy to change between the two).
+    typedef double Parameter;
+
+    // Make a typedef for a vector of the parameters.  This is for the same
+    // reason as "Parameter".
+    typedef std::vector<Parameter> Vector;
+
+    template <typename U, typename G> class TSimpleHMC;
+
+};
+
 namespace {
     // A place holder to flag that the user didn't provide a gradient.  It
     // will return "false" to indicate that the gradient was not calculated.
     struct SimpleHMCInvalidGradient {
-        bool operator() (Vector&, const Vector&) {return false;}
+        bool operator() (sMCMC::Vector&, const sMCMC::Vector&) {return false;}
     };
 };
 
@@ -113,7 +118,7 @@ namespace {
 /// posterior.
 template <typename UserParameter,
           typename OptionalGradient = SimpleHMCInvalidGradient>
-class TSimpleHMC {
+class sMCMC::TSimpleHMC {
 public:
     /// Make the user likelihood class available as TSimpleHMC::LogLikelihood.
     typedef UserParameter LogLikelihood;

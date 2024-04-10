@@ -92,7 +92,7 @@ void SimpleMCMC(int cycles, int steps,
 #undef USE_THIS_PROPOSAL
     // Create the MCMC object and get the likelihood.  Probably best for
     // everything except debugging the likelihood with SKIP_MCMC.
-    TSimpleMCMC<TDummyLogLikelihood> mcmc(tree,true);
+    sMCMC::TSimpleMCMC<TDummyLogLikelihood> mcmc(tree,true);
 #endif
 
     TDummyLogLikelihood& like = mcmc.GetLogLikelihood();
@@ -140,7 +140,7 @@ void SimpleMCMC(int cycles, int steps,
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
-    Vector p(like.GetDim());
+    sMCMC::Vector p(like.GetDim());
     // Randomize the starting point
     for (std::size_t i=0; i<p.size(); ++i) p[i] = gRandom->Uniform(-0.99,0.99);
     // Override p and start near the global minimum for the Rosenbrock function

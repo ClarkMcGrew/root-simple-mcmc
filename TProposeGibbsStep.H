@@ -38,8 +38,8 @@ public:
 
     /// Take a proposed trial point to fill, the current point, and the
     /// likelihood at the current point.
-    void operator ()(Vector& proposal,
-                     const Vector& current,
+    void operator ()(sMCMC::Vector& proposal,
+                     const sMCMC::Vector& current,
                      const double value) {
         if (proposal.size() != current.size()) {
             // Apply a sanity check.  This MUST be true.
@@ -150,10 +150,8 @@ public:
         }
     }
 
-private:
-
     // Return to a default state.
-    void InitializeState(const Vector& current, const double value) {
+    void InitializeState(const sMCMC::Vector& current, const double value) {
         if (fStateInitialized) return;
         fStateInitialized = true;
         if (fLastPoint.size() < 1) {
@@ -170,10 +168,12 @@ private:
         fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),2.0) + 1000;
     }
 
+private:
+
     /// This updates the current state.  The new proposals are adjusted based
     /// on the past history of success (or failure).  This helps make the
     /// chain more efficient at exploring the posterior.
-    void UpdateState(const Vector& current, const double value) {
+    void UpdateState(const sMCMC::Vector& current, const double value) {
         InitializeState(current,value);
         ++fTrials;
 
@@ -197,7 +197,7 @@ private:
 
     // The previous current point.  This is used to (among other things) keep
     // track of when the state has changed.
-    Vector fLastPoint;
+    sMCMC::Vector fLastPoint;
 
     // The previous log Likelihood.
     double fLastValue;

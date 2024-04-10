@@ -17,7 +17,7 @@ public:
     const double negativeSlope = 100.0;
 
     // Calculate the log(likelihood).
-    double operator()(const Vector& point)  const {
+    double operator()(const sMCMC::Vector& point)  const {
         double logLikelihood = 0.0;
 
         for (std::size_t i = 0; i<GetDim(); ++i) {
@@ -31,7 +31,7 @@ public:
     }
 
     // Note that this needs to be the grad(log(Likelihood)).
-    bool operator() (Vector& g, const Vector& p) {
+    bool operator() (sMCMC::Vector& g, const sMCMC::Vector& p) {
         throw;
     }
 

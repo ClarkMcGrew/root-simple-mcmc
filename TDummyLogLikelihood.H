@@ -18,7 +18,7 @@ public:
     // Calculate the log(likelihood).  The dummy likelihood is a Gaussian
     // (with covariance) centered at zero.  The covariance is set in Init()
     // (below).
-    double operator()(const Vector& point)  const {
+    double operator()(const sMCMC::Vector& point)  const {
         double logLikelihood = 0.0;
 
         for (std::size_t i = 0; i<GetDim(); ++i) {
@@ -31,7 +31,7 @@ public:
     }
 
     // Note that this needs to be the grad(log(Likelihood)).
-    bool operator() (Vector& g, const Vector& p) {
+    bool operator() (sMCMC::Vector& g, const sMCMC::Vector& p) {
         for (std::size_t i=0; i<p.size(); ++i) {
             g[i] = 0.0;
             for (std::size_t j=0; j<p.size(); ++j) {

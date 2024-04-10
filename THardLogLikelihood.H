@@ -54,7 +54,7 @@ public:
 
     // Calculate the log(likelihood).  The hard likelihood is the opposite of
     // a Rosenbrock function and has a maxima of 0 at X=(1,1,1,...,1).
-    double operator()(const Vector& point)  const {
+    double operator()(const sMCMC::Vector& point)  const {
         double logLikelihood = 0.0;
 
         for (std::size_t i = 0; i<GetDim()-1; ++i) {
@@ -67,7 +67,7 @@ public:
     }
 
     // Note that this needs to be the grad(log(Likelihood)).
-    bool operator() (Vector& g, const Vector& p) {
+    bool operator() (sMCMC::Vector& g, const sMCMC::Vector& p) {
 
         // Find gradient for first element.
         g[0] = - 2.0*(1.0-p[0]) - 4.0*ROSEN_B*p[0]*(p[1]-p[0]*p[0]);

@@ -18,13 +18,13 @@ The MCMC object is created with one required and one optional template
 argument.
 
 ```
-typedef TSimpleMCMC<UserLikelihood> TUserMCMC;
+typedef sMCMC::TSimpleMCMC<UserLikelihood> TUserMCMC;
 ```
 
 or
 
 ```
-typedef TSimpleMCMC<UserLikelihood,UserProposal> TUserMCMC;
+typedef sMCMC::TSimpleMCMC<UserLikelihood,UserProposal> TUserMCMC;
 ```
 
 The UserLikelihood template argument must be a class (or struct) which
@@ -56,7 +56,7 @@ This can be used in your root macros, or C++ code as follows.
 ```
 class TDummyLogLikelihood {
 public:
-    double operator()(const Vector& point)  const {
+    double operator()(const sMCMC::Vector& point)  const {
         double logLikelihood = 0.0;
         for (std::size_t i = 0; i < point.size(); ++i) {
             logLikelihood += - 0.5*point[i]*point[i];
@@ -83,7 +83,7 @@ void SimpleMCMC() {
     mcmc.GetProposeStep().SetCorrelation(1,2,0.5)  // Set Correlation Coeff.
     mcmc.GetProposeStep().SetCorrelation(2,3,-0.7) // Set Correlation Coeff.
 
-    Vector point(5);
+    sMCMC::Vector point(5);
     mcmc.Start(point);  // Set initial conditions
 
     // Invisible burn-in: This doesn't save any output and might be

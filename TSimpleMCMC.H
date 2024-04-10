@@ -52,7 +52,7 @@ namespace sMCMC {
 ///
 ///\code
 /// struct ExampleLogLikelihood {
-///    double operator() (const Vector& point);
+///    double operator() (const sMCMC::Vector& point);
 /// }
 ///\endcode
 ///
@@ -61,11 +61,11 @@ namespace sMCMC {
 ///
 ///\code
 /// struct ExampleProposal {
-///    void operator() (Vector& proposed,
-///                     const Vector& previous,
+///    void operator() (sMCMC::Vector& proposed,
+///                     const sMCMC::Vector& previous,
 ///                     const double previousValue);
 ///    void InitializeState(const Vector& start, const double startValue);
-///    bool RestoreState(const Vector& previous,
+///    bool RestoreState(const sMCMC::Vector& previous,
 ///                      const double previousValue,
 ///                      TTree* tree);
 ///    bool AttachState(TTree* tree);
@@ -125,7 +125,7 @@ namespace sMCMC {
 ///     TTree *tree = new TTree("SimpleMCMC",
 ///                             "Tree of accepted points");
 ///
-///     TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
+///     sMCMC::TSimpleMCMC<TDummyLogLikelihood> mcmc(tree);
 ///
 ///     // The next three lines are for example only and should almost never
 ///     // be used.  This is to show the syntax for controlling
@@ -139,7 +139,7 @@ namespace sMCMC {
 ///     // If you need provide hints about correlations between two dimensions.
 ///     mcmc.GetProposeStep().SetCorrelation(3,4,0.3)
 ///
-///     Vector point(5);
+///     sMCMC::Vector point(5);
 ///     mcmc.Start(point);  // Set initial conditions
 ///
 ///     // Example of burn-in without saving the steps.  You probably

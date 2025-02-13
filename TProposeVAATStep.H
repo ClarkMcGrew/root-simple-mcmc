@@ -1,9 +1,10 @@
-#ifndef ProposeGibbsStep_H_SEEN
-#define ProposeGibbsStep_H_SEEN
+#ifndef ProposeVAATStep_H_SEEN
+#define ProposeVAATStep_H_SEEN
 
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <numeric>
 #include <cmath>
 
 #include <TRandom.h>
@@ -12,23 +13,17 @@
 #define MCMC_DEBUG_LEVEL 2
 #endif
 
-#ifndef MCMC_DEBUG
-#define MCMC_DEBUG(level) if (level <= (MCMC_DEBUG_LEVEL)) std::cout
-#endif
-
-#define MCMC_ERROR (std::cout <<__FILE__<<":: " << __LINE__ << ": " )
-
 namespace sMCMC {
-    class TProposeGibbsStep;
+    class TProposeVAATStep;
 };
 
 /// A default for the class to propose the next step.  This implements an
-/// adaptive Gibbs.
-class sMCMC::TProposeGibbsStep {
+/// adaptive Variable At A Time.
+class sMCMC::TProposeVAATStep {
 public:
-    TProposeGibbsStep() :
+    TProposeVAATStep() :
         fLastValue(0.0), fTrials(0), fSuccesses(0), fAcceptanceWindow(-1),
-        fAcceptance(0.0),
+        fLastIndex(-1), fAcceptanceRigidity(2.0),
         fStateInitialized(false) {
         // Set a default value for the target acceptance rate.  For some
         // reason, the magic value in the literature is 44%.
@@ -60,25 +55,27 @@ public:
         UpdateProposal();
 
         // Make the proposal.
-        std::size_t i = fNextIndex.back();
+        fLastIndex = fNextIndex.back();
         fNextIndex.pop_back();
-        if (fProposalType[i].type == 1) {
+        if (fProposalType[fLastIndex].type == 1) {
             // Make a uniform proposal.
-            proposal[i] = gRandom->Uniform(fProposalType[i].param1,
-                                           fProposalType[i].param2);
+            proposal[fLastIndex]
+                = gRandom->Uniform(fProposalType[fLastIndex].param1,
+                                   fProposalType[fLastIndex].param2);
             return;
         }
 
         double expectedVariance = 1.0;
-        if (fProposalType[i].type == 0 && fProposalType[i].param1>0) {
+        if (fProposalType[fLastIndex].type == 0
+            and fProposalType[fLastIndex].param1>0) {
             // A Gaussian proposal with a variance other than one...
-            expectedVariance = fProposalType[i].param1;
+            expectedVariance = fProposalType[fLastIndex].param1;
         }
 
         // Make a Gaussian Proposal (with the latest estimate of the
         // covariance).
-        proposal[i] = current[i]
-            + gRandom->Gaus(0.0,expectedVariance);
+        proposal[fLastIndex] = current[fLastIndex]
+            + fSigma[fLastIndex]*gRandom->Gaus(0.0,expectedVariance);
 
     }
 
@@ -91,8 +88,12 @@ public:
                        << std::endl;
             return;
         }
-        fLastPoint.resize(dim);
         fProposalType.resize(dim);
+        fLastPoint.resize(dim);
+        fAcceptance.resize(dim);
+        fAcceptanceTrials.resize(dim);
+        fNextIndex.reserve(dim);
+        fSigma.resize(dim,2.34);
     }
 
     /// Set the proposal function for a particular dimension to be uniform.
@@ -131,17 +132,55 @@ public:
         fProposalType[dim].param1 = sigma;
     }
 
+    /// Set (get) the number of trials used to calculate the
+    /// acceptance.
+    void SetAcceptanceWindow(double a) {fAcceptanceWindow = a;}
+    double GetAcceptanceWindow() const {return fAcceptanceWindow;}
+
+    /// Set (get) the acceptance rigidity.  This is the rough exponential
+    /// constant needed to relax the acceptance to the target acceptance.  It
+    /// is provided as a factor of the acceptance window.  When the rigidity
+    /// is more than 100, the step size is fixed and will not be adapted based
+    /// on the acceptance rate.  The value can be as small as 0.5, but typical
+    /// values should be around 2.0 or greater.  If the acceptance rigidity is
+    /// set to a negative value, the step size will be fixed.
+    void SetAcceptanceRigidity(double r) {fAcceptanceRigidity = r;}
+    double GetAcceptanceRigidity() const {return fAcceptanceRigidity;}
+
+    /// Get the number of successful steps.
+    int GetSuccesses() {return fSuccesses;}
+
+    /// Get the total number of steps taken.
+    int GetTrials() {return fTrials;}
+
+    /// Get the current average acceptance rate.
+    double GetAcceptance() {
+        if (fAcceptance.size() < 1) return 0.0;
+        double averageAcceptance
+            = std::accumulate(fAcceptance.begin(), fAcceptance.end(),
+                              (double) 0.0);
+        averageAcceptance /= fAcceptance.size();
+        return averageAcceptance;
+    }
+
+    /// Get the current average proposal length in standard deviations.
+    double GetSigma() {
+        if (fSigma.size() < 1) return 0.0;
+        double averageSigma
+            = std::accumulate(fSigma.begin(), fSigma.end(),
+                              (double) 0.0);
+        averageSigma /= fSigma.size();
+        return averageSigma;
+    }
+
     /// The proposal steps are chosen based on the next dimension to vary.
     void UpdateProposal() {
         if (!fNextIndex.empty()) return;
-        MCMC_DEBUG(1) << "Update after "
-                      << fSuccesses << "/" << fTrials << " successes"
-                      << " (Accepting: " << fAcceptance << ")"
-                      << std::endl;
 
         // Set initial values (in order).  The indices are popped off as they
         // are used.
         fNextIndex.resize(fProposalType.size());
+        fLastIndex = -1;
         for (std::size_t i=0; i< fProposalType.size(); ++i) {
             fNextIndex[i] = i;
         }
@@ -169,7 +208,7 @@ public:
         fLastValue = value;
         std::copy(current.begin(), current.end(), fLastPoint.begin());
         // Set a default window to average the acceptance over.
-        fAcceptanceWindow = std::pow(1.0*fLastPoint.size(),2.0) + 1000;
+        fAcceptanceWindow = 100;
     }
 
 private:
@@ -189,14 +228,30 @@ private:
         // Track the total number of successes.
         if (accepted) ++fSuccesses;
 
-        // Update the acceptance over the last "fAcceptanceWindow" trials.
-        fAcceptance *= 1.0*std::min(fAcceptanceWindow,fTrials);
-        if (accepted) fAcceptance = fAcceptance+1.0;
-        fAcceptance /= 1.0*std::min(fAcceptanceWindow,fTrials) + 1.0;
-
         // Save the last value and point.
         fLastValue = value;
         std::copy(current.begin(), current.end(), fLastPoint.begin());
+
+        if (fLastIndex < 0) return;
+
+        // Update the acceptance over the last "fAcceptanceWindow" trials.
+        ++fAcceptanceTrials[fLastIndex];
+        fAcceptance[fLastIndex] *= 1.0*std::min(fAcceptanceWindow,
+                                                fAcceptanceTrials[fLastIndex]);
+        if (accepted) fAcceptance[fLastIndex] += 1.0;
+        fAcceptance[fLastIndex] /=
+            1.0 + 1.0*std::min(fAcceptanceWindow,fAcceptanceTrials[fLastIndex]);
+
+        if (fAcceptanceTrials[fLastIndex] > 0.1*fAcceptanceWindow
+            and fAcceptanceRigidity > 0
+            and fAcceptanceRigidity < 100.0) {
+            double v = fSigma[fLastIndex];
+            v *= std::pow(fAcceptance[fLastIndex]/fTargetAcceptance,
+                          std::min(
+                              1.0/500.0,
+                              1.0/(fAcceptanceRigidity*fAcceptanceWindow)));
+            fSigma[fLastIndex] = std::max(v,1.0E-4);
+        }
     }
 
     // The previous current point.  This is used to (among other things) keep
@@ -220,6 +275,9 @@ private:
     // The next dimension to vary.
     std::vector<int> fNextIndex;
 
+    // The last dimension that was varied.
+    int fLastIndex;
+
     // The number of times a step has been proposed.
     int fTrials;
 
@@ -229,11 +287,20 @@ private:
     // The window to average the acceptance over.
     int fAcceptanceWindow;
 
-    // The recent acceptance rate.
-    double fAcceptance;
+    // The rigidity of the acceptance relaxation
+    double fAcceptanceRigidity;
+
+    // The recent acceptance rate for each index
+    std::vector<double> fAcceptance;
+
+    // The number of trials for each index
+    std::vector<int> fAcceptanceTrials;
 
     // The target acceptance rate for the chain.
     double fTargetAcceptance;
+
+    // The fraction of the parameter window to step.
+    std::vector<double> fSigma;
 
     // Keep track of whether we've actually been called.
     bool fStateInitialized;

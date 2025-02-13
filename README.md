@@ -148,7 +148,7 @@ TSimple[blah].H classes generally work.
 - TSimpleMCMC.H (and friends) : This is the adaptive MCMC described above.
 It's the best tested class, and is my first choice when I'm looking at the
 behavior of an MCMC.  An alternative for the proposal is provided by
-TProposeGibbsStep.h (the Gibbs step is not adaptive).  I have used this
+TProposeVAATStep.h (the variable-at-a-time step).  I have used this
 class in "production" environments.
 
 - TSimpleHMC.H (and friends) : This is a "pure" Hamiltonian MC.  It

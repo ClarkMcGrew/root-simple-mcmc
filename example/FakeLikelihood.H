@@ -44,7 +44,7 @@ public:
 
     /// Calculate the likelihood.  This does a bin by bin comparision of the
     /// Data and Simulated histograms.
-    double operator()(const Vector& point)  {
+    double operator()(const sMCMC::Vector& point)  {
         ResetHistograms();
         FillHistograms(point);
         
@@ -170,7 +170,7 @@ public:
 
     }
 
-    void WriteSimulation(const Vector& point, std::string name) {
+    void WriteSimulation(const sMCMC::Vector& point, std::string name) {
         ResetHistograms();
         FillHistograms(point);
         SimulatedClose->Clone((name+"Close").c_str())->Write();

@@ -40,6 +40,10 @@ void Constrained(int trials, int maxEvaluations) {
     std::cout << "Finished with " << mcmc.GetLogLikelihoodCount() << " calls"
               << std::endl;
     
+    // Save the final state.  This forces the proposal to write its final
+    // state to the tree so that the chain can be continued.
+    mcmc.SaveStep();
+
     if (tree) tree->Write();
     if (outputFile) delete outputFile;
 }

@@ -115,9 +115,18 @@ back out of a previous run's tree. Two consequences worth remembering:
   `USE_THIS_PROPOSAL`. This is deliberate; they are test code.
 - Debug output goes through `MCMC_DEBUG(level) << ...`, gated by
   `MCMC_DEBUG_LEVEL` (default 2), and `MCMC_ERROR` for errors.
-- `example/`, `example2/`, `example3/`, and `example4/` predate the move
-  into the `sMCMC` namespace and still use unqualified `TSimpleMCMC<>` and
-  `Vector`. They need `sMCMC::` qualification before they will compile.
+- `example/`, `example2/`, and `example4/` have been updated for the move
+  into the `sMCMC` namespace.  `example3/` has not: it still uses
+  unqualified `TSimpleMCMC<>` and `Vector`, so it needs `sMCMC::`
+  qualification before it will compile.  It is deliberately left alone
+  because it was written to test the `TFakeGP.H` idea, which is not being
+  used.
+- `TFakeGP.H` does not compile on its own.  `MakeProposal()` uses
+  `TDecompChol` and `gRandom` without including `<TDecompChol.h>` or
+  `<TRandom.h>`, and `GaussianKernel()` and `ExponentialKernel()` are
+  declared to return `double` but return nothing.  It builds inside
+  `example3/` only because `TSimpleMCMC.H` is included first and supplies
+  the missing declarations.
 - Commit messages are short imperative one-liners, e.g. "Add explicit
   override for the 'sigma' step size".
 - Limit the character set used on commits, source and documentation to

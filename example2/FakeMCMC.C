@@ -167,6 +167,10 @@ void FakeMCMC() {
         gPad->Print(name.str().c_str());
     }
     
+    // Save the final state.  This forces the proposal to write its final
+    // state to the tree so that the chain can be continued.
+    mcmc.SaveStep();
+
     if (tree) tree->Write();
     if (outputFile) delete outputFile;
 }

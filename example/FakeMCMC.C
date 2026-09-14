@@ -184,6 +184,10 @@ void FakeMCMC() {
     finalStack->Draw("same");
     gPad->Print("FakeMCMC-final.png");
     
+    // Save the final state.  This forces the proposal to write its final
+    // state to the tree so that the chain can be continued.
+    mcmc.SaveStep();
+
     if (tree) tree->Write();
     if (outputFile) delete outputFile;
 }

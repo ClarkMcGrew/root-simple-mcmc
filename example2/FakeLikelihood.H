@@ -51,11 +51,11 @@ public:
     std::size_t GetDim() const {return SystematicCorrection::kParamSize;}
 
     /// Get the MC nominal value.
-    Vector MCTrueValues;
+    sMCMC::Vector MCTrueValues;
     
     /// Calculate the likelihood.  This does a bin by bin comparision of the
     /// Data and Simulated histograms.
-    double operator()(const Vector& point)  {
+    double operator()(const sMCMC::Vector& point)  {
         ResetHistograms();
         FillHistograms(point);
         
@@ -198,7 +198,7 @@ public:
                   << std::endl;
     }
 
-    void WriteSimulation(const Vector& point, std::string name) {
+    void WriteSimulation(const sMCMC::Vector& point, std::string name) {
         ResetHistograms();
         FillHistograms(point);
         SimulatedClose->Clone((name+"Close").c_str())->Write();

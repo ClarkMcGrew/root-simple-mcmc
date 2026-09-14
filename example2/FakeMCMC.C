@@ -27,9 +27,9 @@ void FakeMCMC() {
     TFile *outputFile = new TFile("FakeMCMC.root","recreate");
     TTree *tree = new TTree("MCMC","Tree of accepted points");
 #endif
-    TSimpleMCMC<FakeLikelihood> mcmc(tree);
+    sMCMC::TSimpleMCMC<FakeLikelihood> mcmc(tree);
     FakeLikelihood& like = mcmc.GetLogLikelihood();
-    TProposeAdaptiveStep& proposal = mcmc.GetProposeStep();
+    sMCMC::TProposeAdaptiveStep& proposal = mcmc.GetProposeStep();
 
     // Initialize the likelihood (if you need to).  The dummy likelihood
     // setups a covariance to make the PDF more interesting.
@@ -71,7 +71,7 @@ void FakeMCMC() {
     // dimensions in the likelihood.  You can either hard code it, or do like
     // I'm doing here and have a likelihood method to return the number of
     // dimensions.
-    Vector p(like.GetDim());
+    sMCMC::Vector p(like.GetDim());
 
     // Set the starting point.
     for (std::size_t i=0; i<p.size(); ++i) {

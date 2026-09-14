@@ -61,9 +61,9 @@ namespace sMCMC {
 ///
 ///\code
 /// struct ExampleProposal {
-///    void operator() (sMCMC::Vector& proposed,
-///                     const sMCMC::Vector& previous,
-///                     const double previousValue);
+///    double operator() (sMCMC::Vector& proposed,
+///                       const sMCMC::Vector& previous,
+///                       const double previousValue);
 ///    void InitializeState(const Vector& start, const double startValue);
 ///    bool RestoreState(const sMCMC::Vector& previous,
 ///                      const double previousValue,
@@ -79,7 +79,11 @@ namespace sMCMC {
 ///   - operator () : The output parameter "proposed" must be filled with a
 ///        new proposed point. The input parameter "previous" is the last
 ///        accepted point. The input parameter "previousValue" is the log
-///        Likelihood at the previous accepted point.
+///        Likelihood at the previous accepted point. The return value is the
+///        natural log of the ratio of g(N|O)/g(O|N) where g(a|b) is the
+///        transition probability from b to a.  Notice that for a symmetric
+///        proposal, the ratio is 1.0, so the natural log is zero (this is the
+///        most common case).
 ///
 ///   - InitializeState() : Called before the first step.  THIS CAN BE A
 ///        NO-OP.
@@ -105,7 +109,10 @@ namespace sMCMC {
 ///        the output tree.  This can be used to zero any branch variables.
 ///        THIS CAN BE A NO-OP.
 ///
-/// This can be used in your root macros:
+/// Here is a very simple example that generates an MCMC chain for a
+/// multi-dimensional quadratic likelihood with the most probable point at
+/// [0,0,...0]. This example uses the default proposal
+/// (i.e. TProposeAdaptiveStep).
 ///
 /// \code
 /// class TDummyLogLikelihood {
@@ -161,8 +168,6 @@ namespace sMCMC {
 /// \code
 /// root -l -q SimpleMCMC.C+
 /// \endcode
-///
-/// With ROOT5, the macro must be compiled using ACLIC.
 ///
 /// The default class for UserProposal is TProposeAdaptiveStep which
 /// implements an adaptive Metropolis-Hastings step.  It has several methods
@@ -375,7 +380,12 @@ public:
 
         ++fTotalSteps;
 
-        fProposeStep(fProposed,fAccepted,fAcceptedLogLikelihood);
+        // The logTransition is the ln(g(N|O)/G(O|N)). In other words the log
+        // of the ratio (probability to transition from O to N)/(probability
+        // to transition frm N to O). That will be zero if the transition
+        // probability is a symmetric functino.
+        double logTransition =
+            fProposeStep(fProposed,fAccepted,fAcceptedLogLikelihood);
 
         // Make sure that the last accepted is in the "save" accepted
         // location.  This is needed in case the user did something evil, like
@@ -439,6 +449,9 @@ public:
         // negative, the proposed point is less probable than the accepted
         // point.
         double delta = fProposedLogLikelihood - fAcceptedLogLikelihood;
+        // Apply the correction for an asymmetric transition probability. This
+        // will be zero for a symmetric transition.
+        delta += logTransition;
         if (delta < 0.0) {
             // If the metropolis method parameter is false, then don't apply
             // the Metropolis algorithm and only take steps that increase the
@@ -597,7 +610,7 @@ protected:
 struct sMCMC::TProposeSimpleStep {
     TProposeSimpleStep(): fSigma(-1.0) {}
 
-    void operator ()(Vector& proposal,
+    double operator ()(Vector& proposal,
                      const Vector& current,
                      const double value) const {
         double sigma = fSigma;
@@ -609,6 +622,8 @@ struct sMCMC::TProposeSimpleStep {
         for (std::size_t i = 0; i < proposal.size(); ++i) {
             proposal[i] = current[i] + gRandom->Gaus(0.0,sigma);
         }
+
+        return 0.0;
     }
 
     double fSigma;
@@ -656,7 +671,7 @@ public:
 
     /// Take a proposed trial point to fill, the current point, and the
     /// likelihood at the current point.
-    void operator ()(Vector& proposal,
+    double operator ()(Vector& proposal,
                      const Vector& current,
                      const double value) {
         if (proposal.size() != current.size()) {
@@ -674,7 +689,7 @@ public:
             }
             std::copy(fForcedStep.begin(), fForcedStep.end(), proposal.begin());
             fForcedStep.clear();
-            return;
+            return 0.0;
         }
 
         /// If the "scan" variable is set, then only change that variable.
@@ -690,7 +705,7 @@ public:
                 // Make a uniform proposal.
                 proposal[scan] = gRandom->Uniform(fProposalType[scan].param1,
                                                   fProposalType[scan].param2);
-                return;
+                return 0.0;
             }
             // Make a Gaussian proposal around the initial value.
             double sigma = 1.0;
@@ -700,7 +715,7 @@ public:
             double r = gRandom->Gaus(fCentralPoint[scan],sigma);
             proposal[scan] = r;
             MCMC_DEBUG(0) << "propose " << r << " for " << scan << std::endl;
-            return;
+            return 0.0;
         }
 
         UpdateState(current,value);
@@ -722,6 +737,8 @@ public:
                 proposal[j] += fSigma*r*fDecomposition(i,j);
             }
         }
+
+        return 0.0;
     }
 
     /// Get (set) the current estimated center of the point cloud.  The

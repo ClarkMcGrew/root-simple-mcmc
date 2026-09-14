@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
         input >> trials;
     }
     if (argc > 2) {
-        std::istringstream input(argv[1]);
+        std::istringstream input(argv[2]);
         input >> maxEvaluations;
     }
     SimpleHMC(trials,maxEvaluations);

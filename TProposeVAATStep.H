@@ -37,7 +37,7 @@ public:
 
     /// Take a proposed trial point to fill, the current point, and the
     /// likelihood at the current point.
-    void operator ()(sMCMC::Vector& proposal,
+    double operator ()(sMCMC::Vector& proposal,
                      const sMCMC::Vector& current,
                      const double value) {
         if (proposal.size() != current.size()) {
@@ -62,7 +62,7 @@ public:
             proposal[fLastIndex]
                 = gRandom->Uniform(fProposalType[fLastIndex].param1,
                                    fProposalType[fLastIndex].param2);
-            return;
+            return 0.0;
         }
 
         double expectedVariance = 1.0;
@@ -77,6 +77,7 @@ public:
         proposal[fLastIndex] = current[fLastIndex]
             + fSigma[fLastIndex]*gRandom->Gaus(0.0,expectedVariance);
 
+        return 0.0;
     }
 
     /// Set the number of dimensions in the proposal.  This must match the

@@ -14,7 +14,7 @@ void Constrained(int trials, int maxEvaluations) {
     TFile *outputFile = new TFile("Constrained.root","recreate");
     TTree *tree = new TTree("Constrained","Tree of accepted points");
 #endif
-    TSimpleMCMC<TConstrainedLikelihood> mcmc(tree);
+    sMCMC::TSimpleMCMC<TConstrainedLikelihood> mcmc(tree);
     TConstrainedLikelihood& like = mcmc.GetLogLikelihood();
 
     // Initialize the likelihood (if you need to)
@@ -22,7 +22,7 @@ void Constrained(int trials, int maxEvaluations) {
     
     // Set the number of dimensions for the proposal.
     mcmc.GetProposeStep().SetDim(like.GetDim());
-    Vector p(like.GetDim());
+    sMCMC::Vector p(like.GetDim());
     mcmc.Start(p,false);
 
     // Burnin the chain (don't save the output)

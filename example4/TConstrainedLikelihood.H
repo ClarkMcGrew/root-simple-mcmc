@@ -23,7 +23,7 @@ public:
     }
 
     // Calculate the log(likelihood).  The priors are set in the Init() method.
-    double operator()(const Vector& point)  const {
+    double operator()(const sMCMC::Vector& point)  const {
         double logLikelihood = 0.0;
 
 
@@ -47,7 +47,7 @@ public:
 
     // Note that this needs to be the grad(log(Likelihood)).  It returns false
     // since the gradient is not calculated.
-    bool operator() (Vector& g, const Vector& p) {
+    bool operator() (sMCMC::Vector& g, const sMCMC::Vector& p) {
         return false;
     }
 

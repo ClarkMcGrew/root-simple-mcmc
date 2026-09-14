@@ -1,4 +1,4 @@
-#ifndef TConstrainedLogLikelihood_H_seen
+#ifndef TConstrainedLikelihood_H_seen
 #define TConstrainedLikelihood_H_seen
 // Generate a posterior for a likelihood that has constraints between
 // different parametrers.  This example constrains the sum of the parameters

@@ -52,22 +52,24 @@ hand files from one job to the next. Its header comment is the manual.
 Everything is in namespace `sMCMC`, where `Parameter` is `double` and `Vector` is
 `std::vector<Parameter>`.
 
-`TSimpleMCMC<UserLikelihood, UserProposal = TProposeAdaptiveStep>` is the production
-class. The lifecycle is `Start(point)`, a loop of `Step()`, then `SaveStep()`.
-`Step(save, metropolis)` takes a debugging mode: `0` is a normal Metropolis step, `1`
-takes only uphill steps (a very slow maximizer), `2` accepts everything (a likelihood
-scan).
+`TSimpleMCMC<UserLikelihood, UserProposal = TProposeAdaptiveStep>` is the
+production class. The lifecycle is `Start(point)`, a loop of `Step()`, then
+`SaveStep()`.  `Step(save, metropolis)` takes a debugging mode: `0` is a
+normal Metropolis step, `1` takes only uphill steps (a very slow
+maximizer), `2` accepts everything (a likelihood scan).
 
-The **likelihood contract** is only `double operator()(const sMCMC::Vector&)`. The
-drivers additionally call `Init()` and `GetDim()` on the likelihood, but those are
-driver conventions, not template requirements.
+The **likelihood contract** is only `double operator()(const
+sMCMC::Vector&)`. The drivers additionally call `Init()` and `GetDim()` on
+the likelihood, but those are driver conventions, not template
+requirements.
 
 The **proposal contract** is six methods, documented in full at the top of
 `TSimpleMCMC.H`. `operator()` fills the proposed point and returns
-`log(g(new|old)/g(old|new))` -- **0.0 for a symmetric proposal**, which is the usual case;
-`TSimpleMCMC::Step` adds this to the log likelihood difference. The other five --
-`InitializeState`, `RestoreState`, `AttachState`, `SaveState`, `StateSaved` -- may all be
-no-ops; `TProposeSimpleStep` in the same header is the minimal implementation.
+`log(g(new|old)/g(old|new))` -- **0.0 for a symmetric proposal**, which is
+the usual case; `TSimpleMCMC::Step` adds this to the log likelihood
+difference. The other five -- `InitializeState`, `RestoreState`,
+`AttachState`, `SaveState`, `StateSaved` -- may all be no-ops;
+`TProposeSimpleStep` in the same header is the minimal implementation.
 
 Proposals available:
 
